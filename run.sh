@@ -123,6 +123,8 @@ if [[ $BB_GAME_PROFILE == ufc2 || $BB_GAME_PROFILE == madden19 ]]; then
     export BB_SKIP_MOVIES=${BB_SKIP_MOVIES:-0}
     export BB_FLIP_RATE=${BB_FLIP_RATE:-0} BB_VBLANK_HZ=${BB_VBLANK_HZ:-480} BB_FPS_LIMIT=${BB_FPS_LIMIT:-60}
     export BB_Z16S8_AS_D16=${BB_Z16S8_AS_D16:-1}
+    # madden19: the PS4 calls the runtime answers are recorded for the crash report.
+    [[ $BB_GAME_PROFILE == madden19 ]] && export BB_IMPORT_TRACE=${BB_IMPORT_TRACE:-1}
     if [[ -n ${BB_ONLINE_SERVER:-} ]]; then
         echo "$BB_GAME_PROFILE: online play is not ported (BB_ONLINE_SERVER ignored); playing offline." >&2
         unset BB_ONLINE_SERVER

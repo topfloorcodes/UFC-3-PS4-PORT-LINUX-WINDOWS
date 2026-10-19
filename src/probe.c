@@ -135,7 +135,45 @@ static int gpu_fault(void *context, void *address) {
 }
 static int gpu_step(void *context) { return gpu_enabled && bbgpu_handle_step(context); }
 static bb_fault_jmp_buf *recover_point(void) { bb_fault_jmp_buf *r = runtime_fault_recover; runtime_fault_recover = NULL; return r; }
-static void fault_extra(void *context) { if (gpu_enabled) bbgpu_dump_guest_writes(context); }
+/* Bring-up (BB_IMPORT_TRACE=1, off by default): every import the runtime answers goes through a
+ * 60-byte stub that records its index in a ring buffer (all threads, no locking beyond one
+ * atomic add, no logging), then jumps to the implementation. The fault report prints the last
+ * calls, which shows which PS4 function's answer a crash follows. */
+#define TRACE_RING 1024u
+static uint32_t *trace_ring;
+static uint64_t trace_counter __attribute__((aligned(64)));
+static unsigned char *trace_stubs;
+static uintptr_t *trace_stub_of;
+static void trace_report(void) {
+    if (!trace_ring) return;
+    const uint64_t end = __atomic_load_n(&trace_counter, __ATOMIC_RELAXED);
+    const uint64_t shown = end < 64 ? end : 64;
+    printf("Last %llu PS4 calls answered by the runtime, oldest first (all threads, BB_IMPORT_TRACE):\n", (unsigned long long)shown);
+    for (uint64_t k = end - shown; k < end; ++k) {
+        const uint32_t id = trace_ring[k % TRACE_RING];
+        printf("  %llu: %s\n", (unsigned long long)k, id < import_count ? runtime_import_name(names[id]) : "?");
+    }
+    fflush(stdout);
+}
+static uintptr_t trace_wrap(uint32_t id, uintptr_t target) {
+    if (!trace_stubs) return target;
+    if (trace_stub_of[id]) return trace_stub_of[id];
+    unsigned char *t = trace_stubs + (size_t)id * 64;
+    uintptr_t counter = (uintptr_t)&trace_counter, ring = (uintptr_t)trace_ring;
+    uint32_t mask = TRACE_RING - 1;
+    unsigned char *c = t;
+    *c++ = 0x49; *c++ = 0xba; memcpy(c, &counter, 8); c += 8;             /* movabs r10, &counter */
+    *c++ = 0x49; *c++ = 0xc7; *c++ = 0xc3; *c++ = 1; *c++ = 0; *c++ = 0; *c++ = 0; /* mov r11, 1 */
+    *c++ = 0xf0; *c++ = 0x4d; *c++ = 0x0f; *c++ = 0xc1; *c++ = 0x1a;      /* lock xadd [r10], r11 */
+    *c++ = 0x49; *c++ = 0x81; *c++ = 0xe3; memcpy(c, &mask, 4); c += 4;   /* and r11, mask */
+    *c++ = 0x49; *c++ = 0xba; memcpy(c, &ring, 8); c += 8;                /* movabs r10, ring */
+    *c++ = 0x43; *c++ = 0xc7; *c++ = 0x04; *c++ = 0x9a; memcpy(c, &id, 4); c += 4; /* mov dword [r10+r11*4], id */
+    *c++ = 0x49; *c++ = 0xbb; memcpy(c, &target, 8); c += 8;              /* movabs r11, target */
+    *c++ = 0x41; *c++ = 0xff; *c++ = 0xe3;                                /* jmp r11 */
+    trace_stub_of[id] = (uintptr_t)t;
+    return (uintptr_t)t;
+}
+static void fault_extra(void *context) { trace_report(); if (gpu_enabled) bbgpu_dump_guest_writes(context); }
 /* param.sfo lookup: string or integer value of key, 0 when absent. */
 static int sfo_value(const char *path, const char *key, char *text, size_t text_size, uint32_t *number) {
     FILE *f=fopen(path,"rb");
@@ -411,6 +449,16 @@ int main(int argc, char **argv) {
             puts("Bring-up: unsupported PS4 imports return 0 and are logged once (BB_STUB_UNRESOLVED=1)");
         }
     }
+    {
+        const char *trace = getenv("BB_IMPORT_TRACE");
+        if (trace && trace[0] == '1' && import_count) {
+            trace_ring = calloc(TRACE_RING, sizeof(uint32_t));
+            trace_stub_of = calloc(import_count, sizeof(uintptr_t));
+            trace_stubs = allocate(round_page(import_count * 64));
+            if (!trace_ring || !trace_stub_of || !trace_stubs) fail("allocation failed");
+            puts("Bring-up: PS4 calls answered by the runtime are recorded for the fault report (BB_IMPORT_TRACE=1)");
+        }
+    }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);
     protect(data_traps, (import_count + 1) * page_size, 0);
@@ -433,7 +481,10 @@ int main(int argc, char **argv) {
                         : (uintptr_t)image + relocs[i].value;
         if (relocs[i].kind) {
             uintptr_t resolved = runtime_resolve(names[relocs[i].value], relocs[i].kind == 2);
-            if (resolved) { value = resolved + relocs[i].addend; outcome[relocs[i].value] = 1; }
+            if (resolved) {
+                if (relocs[i].kind == 1 && !relocs[i].addend) resolved = trace_wrap((uint32_t)relocs[i].value, resolved);
+                value = resolved + relocs[i].addend; outcome[relocs[i].value] = 1;
+            }
             else if (native_libc && bindings[relocs[i].value]) {
                 uint64_t address=bindings[relocs[i].value];
                 if (binding_kinds[relocs[i].value]!=relocs[i].kind || !mapped(segments,ns,address,relocs[i].addend+1)) fail("native export kind/range mismatch");
@@ -487,6 +538,7 @@ int main(int argc, char **argv) {
         free(addresses); free(sizes); free(flags); free(pointers);
     }
     protect(traps, round_page((import_count + 1) * 32), 5);
+    if (trace_stubs) protect(trace_stubs, round_page(import_count * 64), 5);
     protect(image, round_page(size), 0);
     int executable_entry = 0;
     for (uint64_t i = 0; i < ns; ++i) {

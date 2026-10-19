@@ -15,3 +15,12 @@ Branch `madden19`, built on the UFC 2 port (`docs/ufc2/BRINGUP.md` has the gener
   Expect graphics to be where the work is once the missing imports are in.
 
 Log of runs: add each run's outcome here (version, how far it got, what was fixed).
+
+## Runs
+
+1. Build 1 (01.00): STOP `getargv` in libc startup (Frostbite reads its command line) -> added.
+2. Build 2: STOP `sceKernelSetVirtualRangeName`; `--list-imports` gave 207 unresolved, 109 of them
+   provided by the GPU library at run time -> the 98 others added (`src/runtime_bringup.c`).
+3. Build 3: libc startup done, game entry, MainThread + workers, PlayGo; then a NULL write on
+   MainThread at guest offset 0x54ac3 (stack through libc). `BB_IMPORT_TRACE=1` (default for this
+   profile) now prints the last 64 runtime-answered PS4 calls in the crash report.

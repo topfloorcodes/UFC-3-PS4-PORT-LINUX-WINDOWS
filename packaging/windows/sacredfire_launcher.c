@@ -952,6 +952,10 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
         game_env(L"BB_WRITE_WINDOW", L"0"); game_env(L"BB_WRITE_STEP", L"0");
         wchar_t patch_dir[80]; _snwprintf(patch_dir, 80, L"patch-%ls", profile_w); patch_dir[79] = 0;
         SetEnvironmentVariableW(L"BB_SHADER_PATCH_DIR", patch_dir);
+        /* madden19 bring-up: record the PS4 calls the runtime answers, for the crash report
+         * (BB_IMPORT_TRACE=0 before starting the launcher turns it off). */
+        if (!wcscmp(profile_w, L"madden19") && !GetEnvironmentVariableW(L"BB_IMPORT_TRACE", NULL, 0))
+            SetEnvironmentVariableW(L"BB_IMPORT_TRACE", L"1");
     }
 #ifdef UFC3_WRITE_WINDOWS_TEST
     /* UFC-48 test launcher (UFC3-WRITE-WINDOWS-TEST.exe; UFC3.exe is the release one, unchanged):
