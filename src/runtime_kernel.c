@@ -309,6 +309,70 @@ static ABI int32_t module_info_for_unwind(uint64_t address,int flags,void *info)
     if (atomic_fetch_add_explicit(&module_info_misses,1,memory_order_relaxed)<4) printf("Kernel: *GetModuleInfoForUnwind(%#llx) -> ESRCH\n",(unsigned long long)address);
     return ERR(3);
 }
+/* ufc2: sceKernelGetModuleInfo / sceKernelGetModuleList. UFC 2 (CUSA01968) asks for handle 0
+ * right after starting its threads (UFC 3 never did). The loader registers the modules it mapped
+ * (runtime_kernel_register_module): handle 0 the eboot, then the linked PRXs in link order. The
+ * answer is the PS4 SceKernelModuleInfo (0x160 bytes): name, up to 4 segments with their host
+ * addresses (the guest runs at them), segment count, a zero fingerprint. */
+typedef struct { uint64_t address; uint32_t size; int32_t prot; } KernelModuleSegment;
+typedef struct {
+    uint64_t st_size;
+    char name[256];
+    KernelModuleSegment segments[4];
+    uint32_t segment_count;
+    uint8_t fingerprint[20];
+} KernelModuleInfo;
+_Static_assert(sizeof(KernelModuleInfo) == 0x160, "SceKernelModuleInfo is 0x160 bytes");
+typedef struct { char name[64]; uint32_t count; KernelModuleSegment segments[4]; } RegisteredModule;
+static RegisteredModule registered_modules[17];
+static _Atomic int registered_module_count;
+static _Atomic unsigned module_info_calls;
+void runtime_kernel_register_module(const char *name, uintptr_t image, const uint64_t *addresses,
+                                    const uint64_t *sizes, const uint64_t *flags, uint64_t count) {
+    const int n = atomic_load(&registered_module_count);
+    if (n >= (int)(sizeof(registered_modules) / sizeof(registered_modules[0]))) return;
+    RegisteredModule *m = &registered_modules[n];
+    snprintf(m->name, sizeof(m->name), "%s", name ? name : "module");
+    for (uint64_t i = 0; i < count && m->count < 4; ++i) {
+        /* Loader flags are ELF p_flags (X=1, W=2, R=4); the PS4 answer uses CPU_READ=1,
+         * CPU_WRITE=2, CPU_EXEC=4. */
+        const int32_t prot = ((flags[i] & 4) ? 1 : 0) | ((flags[i] & 2) ? 2 : 0) | ((flags[i] & 1) ? 4 : 0);
+        m->segments[m->count++] = (KernelModuleSegment){image + addresses[i], (uint32_t)sizes[i], prot};
+    }
+    atomic_store(&registered_module_count, n + 1);
+}
+static ABI int32_t get_module_info(int32_t handle, KernelModuleInfo *info) {
+    const int n = atomic_load(&registered_module_count);
+    const int say = atomic_fetch_add_explicit(&module_info_calls, 1, memory_order_relaxed) < 8;
+    if (!info) return ERR(14); /* EFAULT */
+    if (info->st_size && info->st_size < sizeof(*info)) {
+        if (say) printf("Kernel: sceKernelGetModuleInfo(%d): st_size %llu < 0x160 -> EINVAL\n", handle, (unsigned long long)info->st_size);
+        return ERR(22);
+    }
+    if (handle < 0 || handle >= n) {
+        if (say) printf("Kernel: sceKernelGetModuleInfo(%d) -> ESRCH (%d modules)\n", handle, n);
+        return ERR(3);
+    }
+    const RegisteredModule *m = &registered_modules[handle];
+    memset(info, 0, sizeof(*info));
+    info->st_size = sizeof(*info);
+    snprintf(info->name, sizeof(info->name), "%s", m->name);
+    memcpy(info->segments, m->segments, sizeof(info->segments));
+    info->segment_count = m->count;
+    if (say) printf("Kernel: sceKernelGetModuleInfo(%d) -> %s, %u segments (first %#llx, %u bytes)\n", handle, m->name,
+                    m->count, (unsigned long long)m->segments[0].address, m->segments[0].size);
+    return 0;
+}
+static ABI int32_t get_module_list(int32_t *handles, uint64_t capacity, uint64_t *count) {
+    const int n = atomic_load(&registered_module_count);
+    if (!handles || !count) return ERR(14);
+    uint64_t out = 0;
+    for (int i = 0; i < n && out < capacity; ++i) handles[out++] = i;
+    *count = out;
+    if (atomic_fetch_add_explicit(&module_info_calls, 1, memory_order_relaxed) < 8)
+        printf("Kernel: sceKernelGetModuleList -> %llu modules\n", (unsigned long long)out);
+    return capacity < (uint64_t)n ? ERR(12) /* ENOMEM: more modules than room */ : 0;
+}
 /* libunwind helpers in libkernel: no program header matches (the unwinder falls back to its own
  * tables), and no return address is a signal trampoline. */
 static ABI int32_t elf_phdr_match_addr(void *phdr_info,void *address) { (void)phdr_info; (void)address; return 0; }
@@ -408,6 +472,8 @@ static const RuntimeExport exports[]={
     {"__pthread_cxa_finalize",pthread_cxa_finalize},
     {"sceKernelGetModuleInfoFromAddr",module_info_from_addr}, {"sceKernelGetModuleInfoForUnwind",module_info_for_unwind},
     {"sceSysmoduleGetModuleInfoForUnwind",module_info_for_unwind},
+    {"sceKernelGetModuleInfo",get_module_info}, {"sceKernelGetModuleInfoInternal",get_module_info},
+    {"sceKernelGetModuleList",get_module_list},
     {"__elf_phdr_match_addr",elf_phdr_match_addr}, {"_is_signal_return",is_signal_return},
     {"sceKernelIsAddressSanitizerEnabled",sanitizer_enabled},
     {"sceKernelGetSanitizerMallocReplaceExternal",sanitizer_replace}, {"sceKernelGetSanitizerNewReplaceExternal",sanitizer_replace},

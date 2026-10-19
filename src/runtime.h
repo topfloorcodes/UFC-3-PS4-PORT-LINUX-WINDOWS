@@ -90,6 +90,10 @@ static inline int runtime_nid_equals(const char *name, const char *pattern) {
 int runtime_load_import_names(const char *path);
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid);
 uintptr_t runtime_kernel_resolve(const char *name);
+/* ufc2: a module the loader mapped, for sceKernelGetModuleInfo (handle = registration order: the
+ * eboot first, then the linked PRXs). `addresses` are image offsets; `flags` ELF p_flags. */
+void runtime_kernel_register_module(const char *name, uintptr_t image, const uint64_t *addresses,
+                                    const uint64_t *sizes, const uint64_t *flags, uint64_t count);
 /* SacredFire: a guest thread is ending: libc's thread destructors (_sceKernelSetThreadDtors) run first. */
 void runtime_kernel_thread_exit(void);
 uintptr_t runtime_file_resolve(const char *name);

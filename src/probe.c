@@ -470,6 +470,28 @@ int main(int argc, char **argv) {
     }
     if (!executable_entry) fail("entry is not executable");
     printf("Mapped %" PRIu64 " bytes, %" PRIu64 " segments; applied %" PRIu64 " relocations\n", size, ns, nr);
+    /* ufc2: the modules sceKernelGetModuleInfo answers for. The eboot's segments are those below
+     * the first linked module; each module's are those inside its [base, base + size). */
+    {
+        uint64_t *addresses = calloc(ns ? ns : 1, sizeof(uint64_t)), *sizes = calloc(ns ? ns : 1, sizeof(uint64_t)), *flags = calloc(ns ? ns : 1, sizeof(uint64_t));
+        if (!addresses || !sizes || !flags) fail("allocation failed");
+        uint64_t first_module = UINT64_MAX;
+        for (uint64_t m = 0; m < module_count; ++m) if (modules[m].base < first_module) first_module = modules[m].base;
+        for (int64_t m = -1; m < (int64_t)module_count; ++m) {
+            const uint64_t lo = m < 0 ? 0 : modules[m].base, hi = m < 0 ? first_module : modules[m].base + modules[m].size;
+            uint64_t k = 0;
+            for (uint64_t i = 0; i < ns; ++i)
+                if (segments[i].address >= lo && segments[i].address < hi) {
+                    addresses[k] = segments[i].address; sizes[k] = segments[i].size; flags[k] = segments[i].flags; ++k;
+                }
+            char name[32];
+            if (m < 0) snprintf(name, sizeof(name), "eboot.bin");
+            else if (m == 0) snprintf(name, sizeof(name), "libc.prx");
+            else snprintf(name, sizeof(name), "module%" PRId64 ".prx", m);
+            runtime_kernel_register_module(name, (uintptr_t)image, addresses, sizes, flags, k);
+        }
+        free(addresses); free(sizes); free(flags);
+    }
     if (native_libc) {
         for (uint64_t m=0;m<module_count;++m) {
             int init_executable=0;
