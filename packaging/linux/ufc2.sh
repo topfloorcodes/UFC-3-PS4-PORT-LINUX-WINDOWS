@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # UFC 2 native port (bring-up, Linux). Usage:
-#   ./ufc2.sh /path/to/CUSAxxxxx       plays UFC 2 from that folder and remembers it
-#                                       (an adjacent CUSAxxxxx-patch folder is merged automatically)
+#   ./ufc2.sh /path/to/CUSA01968       plays UFC 2 from that folder and remembers it
+#                                       (an adjacent CUSA01968-patch folder is merged automatically)
 #   ./ufc2.sh                          plays the remembered folder
 #   ./ufc2.sh --register [/path]       records this dump's executable hash (share/ufc2_builds.json)
 #   ./ufc2.sh --info [/path]           prints the dump's title ID, version and executable hash

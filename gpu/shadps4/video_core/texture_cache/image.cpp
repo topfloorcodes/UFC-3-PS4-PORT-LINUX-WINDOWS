@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "bbport_toggles.h"
+#include <algorithm>
 #include <atomic>
 #include <ranges>
 #include "common/assert.h"
@@ -293,16 +294,38 @@ void Image::GetBarriers(Barriers& barriers, vk::ImageLayout dst_layout, vk::Acce
         // In case of partial transition, we need to change the specified subresources only.
         // Otherwise all subresources need to be set to the same state so we can use a full
         // resource transition for the next time.
-        const auto mips =
+        // ufc2: UFC 2 (CUSA01968) binds views whose range runs past the image's mips or layers
+        // (shadPS4 asserted here: "image.cpp GetBarriers" after the menus, compatibility issue
+        // #391). Only subresources the image has are transitioned; the rest do not exist.
+        const u32 level_end =
             needs_partial_transition
-                ? std::ranges::views::iota(subres_range->base.level,
-                                           subres_range->base.level + subres_range->extent.levels)
-                : std::views::iota(0u, info.resources.levels);
-        const auto layers =
+                ? std::min(subres_range->base.level + subres_range->extent.levels,
+                           info.resources.levels)
+                : info.resources.levels;
+        const u32 layer_end =
             needs_partial_transition
-                ? std::ranges::views::iota(subres_range->base.layer,
-                                           subres_range->base.layer + subres_range->extent.layers)
-                : std::views::iota(0u, info.resources.layers);
+                ? std::min(subres_range->base.layer + subres_range->extent.layers,
+                           info.resources.layers)
+                : info.resources.layers;
+        const u32 level_begin =
+            needs_partial_transition ? std::min(subres_range->base.level, level_end) : 0u;
+        const u32 layer_begin =
+            needs_partial_transition ? std::min(subres_range->base.layer, layer_end) : 0u;
+        if (needs_partial_transition &&
+            (subres_range->base.level + subres_range->extent.levels > info.resources.levels ||
+             subres_range->base.layer + subres_range->extent.layers > info.resources.layers)) {
+            static std::atomic<bool> said{false};
+            if (!said.exchange(true)) {
+                LOG_WARNING(Render_Vulkan,
+                            "Barrier range past the image (levels {}+{} of {}, layers {}+{} of {}): "
+                            "clamped (logged once)",
+                            subres_range->base.level, subres_range->extent.levels,
+                            info.resources.levels, subres_range->base.layer,
+                            subres_range->extent.layers, info.resources.layers);
+            }
+        }
+        const auto mips = std::views::iota(level_begin, level_end);
+        const auto layers = std::views::iota(layer_begin, layer_end);
 
         for (u32 mip : mips) {
             for (u32 layer : layers) {

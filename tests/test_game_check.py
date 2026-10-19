@@ -37,7 +37,7 @@ class GameCheckTests(unittest.TestCase):
         (path / 'eboot.bin').write_bytes(fixture() if eboot is None else eboot)
         return path
 
-    def ufc2(self, title='CUSA02588', version='01.07', eboot=None):
+    def ufc2(self, title='CUSA01968', version='01.00', eboot=None):
         return self.game(title, version, eboot, name='EA SPORTS™ UFC® 2')
 
     def setUp(self):
@@ -84,7 +84,7 @@ class GameCheckTests(unittest.TestCase):
         self.assertIsNone(game_check.problem(game))
         p = game_check.profile(game)
         self.assertEqual(p['name'], 'ufc2')
-        self.assertEqual((p['title'], p['version']), ('CUSA02588', '01.07'))
+        self.assertEqual((p['title'], p['version']), ('CUSA01968', '01.00'))
         # Not '5.05': the hooks keyed on UFC 3's addresses stay off (BbToggle::ReferenceBuild).
         self.assertEqual(p['variant'], 'ufc2')
         self.assertFalse(p['known'])
@@ -99,6 +99,13 @@ class GameCheckTests(unittest.TestCase):
         with mock.patch.object(game_check, 'UFC2_TITLES', {'CUSA09999'}):
             self.assertEqual(game_check.profile(game)['name'], 'ufc2')
 
+    def test_cusa01968_by_title_id_whatever_its_name(self):
+        # The targeted dump is recognised by its ID even with a localised TITLE.
+        game = self.game('CUSA01968', '01.00', name='EA SPORTS UFC 2 (localised)')
+        self.assertEqual(game_check.profile(game)['name'], 'ufc2')
+        game = self.game('CUSA01968', '01.00', name='ＵＦＣ')
+        self.assertEqual(game_check.profile(game)['name'], 'ufc2')
+
     def test_ufc3_is_not_taken_for_ufc2(self):
         self.assertFalse(game_check.is_ufc2({'TITLE': 'EA SPORTS™ UFC® 3', 'TITLE_ID': 'CUSA06534'}))
         self.assertFalse(game_check.is_ufc2({'TITLE': 'EA SPORTS UFC 4'}))
@@ -108,7 +115,7 @@ class GameCheckTests(unittest.TestCase):
         game = self.ufc2()
         game_check.register(game)
         builds = json.loads(self.builds.read_text())
-        self.assertEqual(builds[game_check.image_sha256(game)]['title'], 'CUSA02588')
+        self.assertEqual(builds[game_check.image_sha256(game)]['title'], 'CUSA01968')
         self.assertTrue(game_check.profile(game)['known'])
 
     def test_ufc2_register_refuses_other_games(self):
@@ -135,10 +142,10 @@ class GameCheckTests(unittest.TestCase):
                                         capture_output=True, text=True, env=env, check=True).stdout.strip()
         self.assertEqual(run(), 'ufc2')
         self.assertEqual(run('--variant'), 'ufc2')
-        self.assertEqual(run('--field', 'title'), 'CUSA02588')
-        self.assertEqual(run('--field', 'version'), '01.07')
+        self.assertEqual(run('--field', 'title'), 'CUSA01968')
+        self.assertEqual(run('--field', 'version'), '01.00')
         self.assertEqual(run('--field', 'modules'), 'libc.prx libSceFios2.prx')
-        self.assertEqual(json.loads(run('--info'))['TITLE_ID'], 'CUSA02588')
+        self.assertEqual(json.loads(run('--info'))['TITLE_ID'], 'CUSA01968')
 
 
 if __name__ == '__main__':

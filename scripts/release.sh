@@ -13,15 +13,15 @@ git diff-index --quiet --ignore-submodules=dirty HEAD -- || { echo "release: com
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then echo "release: $tag already exists" >&2; exit 1; fi
 repo=$(git remote get-url origin | sed -E 's#^https://github.com/##; s#^git@github.com:##; s#\.git$##')
 
-git tag -a "$tag" -m "UFC 3 native port $version"
+git tag -a "$tag" -m "UFC 2 native port $version"
 trap 'echo "release: failed; removing the local tag $tag" >&2; git tag -d "$tag" >/dev/null' ERR
 bash scripts/build-windows.sh
 bash scripts/package-windows.sh
 bash build.sh
 bash scripts/package-linux.sh
 assets=()
-for pair in "UFC3Native-windows-x86_64.zip:UFC3Native-$tag-windows-x86_64.zip" \
-            "UFC3Native-linux-x86_64.tar.gz:UFC3Native-$tag-linux-x86_64.tar.gz"; do
+for pair in "UFC2Native-windows-x86_64.zip:UFC2Native-$tag-windows-x86_64.zip" \
+            "UFC2Native-linux-x86_64.tar.gz:UFC2Native-$tag-linux-x86_64.tar.gz"; do
     from=dist/${pair%%:*} to=dist/${pair##*:}
     cp "$from" "$to"
     (cd dist && sha256sum "$(basename "$to")" > "$(basename "$to").sha256")
@@ -30,5 +30,5 @@ done
 git push origin HEAD:main "$tag"
 trap - ERR
 gh release create "$tag" "${assets[@]}" --repo "$repo" \
-    --title "UFC 3 native port $version" --notes-file "$notes"
+    --title "UFC 2 native port $version" --notes-file "$notes"
 echo "release: https://github.com/$repo/releases/tag/$tag"

@@ -390,7 +390,7 @@ static DWORD run(wchar_t *line, char *captured, size_t capture_size, int is_game
              code == 0xC0000022u ? L"access denied" : code == 0xC0000135u ? L"a DLL is missing" :
              code == 0xC000007Bu ? L"a DLL is not 64-bit" : L"a DLL failed to initialize");
         logw(L"  Usually: an antivirus blocked or quarantined a file in bin\\ (Windows Security > Protection\n"
-             L"  history: allow it), the folder is synced by OneDrive (extract to e.g. C:\\Games\\UFC3Native),\n"
+             L"  history: allow it), the folder is synced by OneDrive (extract to e.g. C:\\Games\\UFC2Native),\n"
              L"  or the zip was extracted without being unblocked (zip > Properties > Unblock, extract again).\n");
     }
     CloseHandle(process.hProcess);
@@ -642,7 +642,7 @@ static int server_start(uint32_t ip) {
         if (port_taken(SOCK_STREAM, host_tcp_ports[i])) at += (size_t)_snwprintf(taken + at, 256 - at, L"%ls%u/TCP", at ? L", " : L"", host_tcp_ports[i]);
     if (port_taken(SOCK_DGRAM, host_udp_port)) at += (size_t)_snwprintf(taken + at, 256 - at, L"%ls%u/UDP", at ? L", " : L"", host_udp_port);
     if (at) {
-        _snwprintf(message, 1024, L"Host server: port %ls already in use on this PC, so the server cannot start. Another UFC 3 server "
+        _snwprintf(message, 1024, L"Host server: port %ls already in use on this PC, so the server cannot start. Another game server "
                                   L"is probably running (another UFC3.exe hosting, or ufc3_server.py): close it, or pick Join server "
                                   L"and type its address. (A port reserved by Windows shows in: netsh int ipv4 show excludedportrange tcp)", taken);
         message[1023] = 0; fail(message); return 1;
@@ -788,7 +788,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     wchar_t eboot[PATHW]; join(eboot, PATHW, game, L"eboot.bin");
     if (!game[0] || !exists(eboot)) {
         wchar_t m[PATHW + 128];
-        _snwprintf(m, PATHW + 128, L"No eboot.bin in \"%ls\": choose the game folder (CUSA06534, with CUSA06534-patch beside it or merged in).", game);
+        _snwprintf(m, PATHW + 128, L"No eboot.bin in \"%ls\": choose the game folder (CUSA01968, with CUSA01968-patch beside it or merged in).", game);
         m[PATHW + 127] = 0; fail(m); return 2;
     }
     /* Base and update side by side (CUSA06534 + CUSA06534-patch, as PKG extractors leave them):
@@ -799,7 +799,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
         const wchar_t *args[] = {game};
         if (script(L"scripts", L"merge_update.py", args, 1, merged, sizeof(merged))) {
             logf("%s", merged);
-            fail(L"Merging the 1.14 update into the game folder failed (see the log).");
+            fail(L"Merging the update into the game folder failed (see the log).");
             return 2;
         }
         /* The folder is the last line (progress lines come before it). */
@@ -816,7 +816,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
         const wchar_t *args[] = {game};
         if (script(L"scripts", L"game_check.py", args, 1, profile, sizeof(profile))) {
             logf("%s", profile);
-            fail(L"The game check failed (see the log): the folder is not EA SPORTS UFC 3 CUSA06534 with the 1.14 update, nor EA SPORTS UFC 2.");
+            fail(L"The game check failed (see the log): the folder is not EA SPORTS UFC 2 (CUSA01968): choose the folder with its eboot.bin.");
             return 2;
         }
         trim(profile);
@@ -834,8 +834,8 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     wchar_t profile_w[64]; MultiByteToWideChar(CP_UTF8, 0, profile, -1, profile_w, 64); profile_w[63] = 0;
     SetEnvironmentVariableW(L"BB_GAME_PROFILE", profile_w);
     const int is_ufc2 = !wcscmp(profile_w, L"ufc2");
-    /* Title ID and version from the profile (UFC 2: its own param.sfo); UFC 3's if unknown. */
-    wchar_t title_id[32] = L"CUSA06534", app_ver[16] = L"01.14";
+    /* Title ID and version from the profile (the dump's own param.sfo); CUSA01968 if unknown. */
+    wchar_t title_id[32] = L"CUSA01968", app_ver[16] = L"01.00";
     {
         char value[64] = "";
         const wchar_t *title_args[] = {game, L"--field", L"title"};
@@ -984,18 +984,18 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     SetEnvironmentVariableW(L"BB_UFFD", L"0");            /* Linux only */
     SetEnvironmentVariableW(L"BB_GUEST_IN_PLACE", L"0");  /* dma-buf memory model: Linux only */
     /* env_or keeps 8 values at a time: two lines. */
-    logw(L"UFC 3: output %lsx%ls, frame limit %ls (0: none), present mode %ls, fullscreen %ls\n",
+    logw(L"UFC 2: output %lsx%ls, frame limit %ls (0: none), present mode %ls, fullscreen %ls\n",
          env_or(L"BB_INTERNAL_WIDTH", L"?"), env_or(L"BB_INTERNAL_HEIGHT", L"?"), env_or(L"BB_FPS_LIMIT", L"?"),
          env_or(L"BB_PRESENT_MODE", L"?"), env_or(L"BB_FULLSCREEN", L"0"));
-    logw(L"UFC 3: player name \"%ls\", language %ls (BB_LANGUAGE)\n", env_or(L"BB_USER_NAME", L"Player 1"), env_or(L"BB_LANGUAGE", L"1"));
+    logw(L"UFC 2: player name \"%ls\", language %ls (BB_LANGUAGE)\n", env_or(L"BB_USER_NAME", L"Player 1"), env_or(L"BB_LANGUAGE", L"1"));
     {
         const wchar_t *server = env_or(L"BB_ONLINE_SERVER", L"");
-        if (server[0]) logw(L"UFC 3: online server %ls (BB_ONLINE_SERVER)\n", server); else logw(L"UFC 3: offline (no BB_ONLINE_SERVER)\n");
+        if (server[0]) logw(L"UFC 2: online server %ls (BB_ONLINE_SERVER)\n", server); else logw(L"UFC 2: offline (no BB_ONLINE_SERVER)\n");
     }
     if (experiment)
         logw(L"4K/2K experimental: in game choose VIDEO -> Favor Resolution (the scene grows only with it). %ls scene, PS4 Pro %ls, "
              L"patches %ls\n", resolution_names[settings.resolution], env_or(L"BB_NEO", L"?"), patches_dir_used);
-    logw(L"UFC 3: window %ls, FSR 1.0 %ls, RCAS %ls (attenuation %ls), readbacks %ls (2 = precise)\n",
+    logw(L"UFC 2: window %ls, FSR 1.0 %ls, RCAS %ls (attenuation %ls), readbacks %ls (2 = precise)\n",
          env_or(L"BB_WINDOW_SIZE", L"= output"), env_or(L"BB_FSR1", L"0"), env_or(L"BB_RCAS", L"?"), env_or(L"BB_RCAS_ATTENUATION", L"?"), env_or(L"BB_READBACKS", L"?"));
     if (settings.clear_cache || !wcscmp(env_or(L"BB_CLEAR_SHADER_CACHE", L"0"), L"1")) {
         wchar_t cache[PATHW]; join(cache, PATHW, env_or(L"BB_USER_DIR", user_dir), L"cache"); join(cache, PATHW, cache, title_id);
@@ -1368,9 +1368,9 @@ static void paint_window(HDC dc, RECT client) {
     }
     RECT t = {text_x, sx(26), client.right - sx(16), sx(66)};
     SelectObject(dc, font_title); SetTextColor(dc, C_GOLD);
-    DrawTextW(dc, L"EA SPORTS UFC 3 \x2014 native PC port", -1, &t, DT_SINGLELINE | DT_LEFT | DT_BOTTOM | DT_NOPREFIX | DT_END_ELLIPSIS);
+    DrawTextW(dc, L"EA SPORTS UFC 2 \x2014 native PC port", -1, &t, DT_SINGLELINE | DT_LEFT | DT_BOTTOM | DT_NOPREFIX | DT_END_ELLIPSIS);
     char version[64]; read_version(version, sizeof(version));
-    wchar_t line[160]; _snwprintf(line, 160, L"PS4 CUSA06534 \x00B7 SacredFire %hs \x00B7 your own game dump required", version); line[159] = 0;
+    wchar_t line[160]; _snwprintf(line, 160, L"PS4 CUSA01968 \x00B7 SacredFire %hs \x00B7 your own game dump required", version); line[159] = 0;
     t.top = sx(70); t.bottom = sx(90);
     SelectObject(dc, ui_font); SetTextColor(dc, C_TEXT_DIM);
     DrawTextW(dc, line, -1, &t, DT_SINGLELINE | DT_LEFT | DT_NOPREFIX | DT_END_ELLIPSIS);
@@ -1650,7 +1650,7 @@ static void controls_open(void) {
     static int registered;
     if (!registered) {
         WNDCLASSW wc = {.lpfnWndProc = ctl_proc, .hInstance = GetModuleHandleW(NULL), .hCursor = LoadCursorW(NULL, IDC_ARROW),
-                        .hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1), .lpszClassName = L"UFC3NativeControls"};
+                        .hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1), .lpszClassName = L"UFC2NativeControls"};
         RegisterClassW(&wc);
         registered = 1;
     }
@@ -1658,7 +1658,7 @@ static void controls_open(void) {
     const int rows_h = 26, top = 40, client_w = 640, client_h = top + CTL_INPUTS * rows_h + 56;
     RECT r = {0, 0, sx(client_w), sx(client_h)};
     AdjustWindowRect(&r, WS_CAPTION | WS_SYSMENU, FALSE);
-    ctl_window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"UFC3NativeControls", L"Controls", WS_CAPTION | WS_SYSMENU | WS_POPUP,
+    ctl_window = CreateWindowExW(WS_EX_DLGMODALFRAME, L"UFC2NativeControls", L"Controls", WS_CAPTION | WS_SYSMENU | WS_POPUP,
                                  CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, main_window, NULL,
                                  GetModuleHandleW(NULL), NULL);
     if (!ctl_window) return;
@@ -1890,7 +1890,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LP
         else if (id == ID_MODE && code == CBN_SELCHANGE) online_controls();
         else if (id == ID_HOSTSCAN && !running) fill_host_addresses();
         else if (id == ID_COPYHOST) copy_host_address();
-        else if (id == ID_BROWSE) { wchar_t folder[PATHW]; if (pick_folder(L"The game folder (CUSA06534; CUSA06534-patch beside it is merged automatically)", folder)) {
+        else if (id == ID_BROWSE) { wchar_t folder[PATHW]; if (pick_folder(L"The game folder (CUSA01968; CUSA01968-patch beside it is merged automatically)", folder)) {
             SetWindowTextW(control(ID_GAME), folder);
             banner_load(folder); RECT banner = {0, 0, sx(CLIENT_W), sx(BANNER_H)}; InvalidateRect(window, &banner, FALSE);
         } }
@@ -2005,18 +2005,18 @@ static int gui(HINSTANCE instance, const wchar_t *const *extra, int extra_count)
     brush_background = CreateSolidBrush(C_BACKGROUND); brush_panel = CreateSolidBrush(C_PANEL);
     brush_input = CreateSolidBrush(C_INPUT); brush_log = CreateSolidBrush(C_LOG);
     WNDCLASSW wc = {.lpfnWndProc = window_proc, .hInstance = instance, .hCursor = LoadCursorW(NULL, IDC_ARROW),
-                    .hbrBackground = brush_background, .lpszClassName = L"UFC3NativeLauncher", .hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1))};
+                    .hbrBackground = brush_background, .lpszClassName = L"UFC2NativeLauncher", .hIcon = LoadIconW(instance, MAKEINTRESOURCEW(1))};
     RegisterClassW(&wc);
     const DWORD style = (WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX) | WS_CLIPCHILDREN;
     /* The client area is CLIENT_W x CLIENT_H at 96 DPI: the window is created, measured, and
      * resized by the difference (the frame metrics of the running system, whatever they are). */
     const int client_w = sx(CLIENT_W), client_h = sx(CLIENT_H);
 #if defined(UFC3_WRITE_WINDOWS_TEST)
-    const wchar_t *window_title = L"EA SPORTS UFC 3 - native PC port (UFC-48 write windows test)";
+    const wchar_t *window_title = L"EA SPORTS UFC 2 - native PC port (UFC-48 write windows test)";
 #elif defined(UFC3_DIAGNOSTIC_PACKAGE)
-    const wchar_t *window_title = L"EA SPORTS UFC 3 - native PC port (Windows diagnostic test)";
+    const wchar_t *window_title = L"EA SPORTS UFC 2 - native PC port (Windows diagnostic test)";
 #else
-    const wchar_t *window_title = L"EA SPORTS UFC 3 - native PC port";
+    const wchar_t *window_title = L"EA SPORTS UFC 2 - native PC port";
 #endif
     main_window = CreateWindowExW(0, wc.lpszClassName, window_title, style, CW_USEDEFAULT, CW_USEDEFAULT, client_w + 16, client_h + 64,
                                   NULL, NULL, instance, NULL);
@@ -2068,7 +2068,7 @@ static int gui(HINSTANCE instance, const wchar_t *const *extra, int extra_count)
     }
     /* GAME (left column; content x 28..430) */
     int y = 134 + 34;
-    label(L"Game folder (CUSA06534, with CUSA06534-patch beside it)", 28, y, 402); y += 26;
+    label(L"Game folder (CUSA01968, with CUSA01968-patch beside it)", 28, y, 402); y += 26;
     edit(settings.game, 28, y, 306, ID_GAME);
     button(L"Browse...", 342, y, 88, 24, ID_BROWSE); y += 32;
     label(L"Player name", 28, y, 118);
@@ -2202,7 +2202,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command_line, 
     else {
         PWSTR local = NULL;
         if (FAILED(SHGetKnownFolderPath(&FOLDERID_LocalAppData, 0, NULL, &local))) { fail(L"no %LOCALAPPDATA%"); return 2; }
-        join(data, PATHW, local, L"UFC3Native"); CoTaskMemFree(local);
+        join(data, PATHW, local, L"UFC2Native"); CoTaskMemFree(local);
     }
 #endif
     ensure_directory(data);

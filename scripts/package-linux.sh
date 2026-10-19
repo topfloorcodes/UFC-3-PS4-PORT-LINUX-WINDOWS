@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UFC 3: dist/UFC3Native-linux-x86_64.tar.gz from the current Linux build (bash build.sh first).
+# UFC 3: dist/UFC2Native-linux-x86_64.tar.gz from the current Linux build (bash build.sh first).
 # Portable to glibc 2.38+: the program's libraries (a SDL3 built here from the Windows deps'
 # source, fmt, miniz, xxhash, Zydis, libstdc++, libgcc_s) go to bin/lib; glibc, Vulkan and the
 # window system come from the system. Every ELF is checked for its newest glibc symbol version.
@@ -28,7 +28,7 @@ if [[ ! -f $work/sdl-build/libSDL3.so.0 ]]; then
         -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_INSTALL=OFF "-DCMAKE_SHARED_LINKER_FLAGS=$wrap" > "$work/sdl-cmake.log"
     ninja -C "$work/sdl-build" > "$work/sdl-build.log"
 fi
-stage=$work/stage/UFC3Native
+stage=$work/stage/UFC2Native
 rm -rf "$work/stage"
 mkdir -p "$stage/bin/gpu" "$stage/bin/lib" "$stage/scripts" "$stage/tools" "$stage/share" "$stage/patches" "$stage/licenses" "$stage/launcher"
 install -m755 out/sacredfire out/bb-gpu-capabilities "$stage/bin/"
@@ -66,7 +66,7 @@ newest=$(find "$stage/bin" -type f \( -name '*.so*' -o -perm -u+x \) -exec objdu
 [[ $(printf '%s\n' "$newest" GLIBC_2.38 | sort -V | tail -1) == GLIBC_2.38 ]] || { echo "package-linux: needs $newest (> 2.38)" >&2; exit 1; }
 if grep -rlq "$HOME" "$stage/bin" "$stage"/*.sh 2>/dev/null; then echo "package-linux: a build-machine path is in the package:" >&2; grep -rl "$HOME" "$stage/bin" >&2; fi
 mkdir -p dist
-tar -C "$work/stage" -czf dist/UFC3Native-linux-x86_64.tar.gz UFC3Native
-(cd dist && sha256sum UFC3Native-linux-x86_64.tar.gz > UFC3Native-linux-x86_64.tar.gz.sha256)
-echo "package-linux: dist/UFC3Native-linux-x86_64.tar.gz ($built_from; newest glibc symbol $newest)"
-ls -lh dist/UFC3Native-linux-x86_64.tar.gz
+tar -C "$work/stage" -czf dist/UFC2Native-linux-x86_64.tar.gz UFC2Native
+(cd dist && sha256sum UFC2Native-linux-x86_64.tar.gz > UFC2Native-linux-x86_64.tar.gz.sha256)
+echo "package-linux: dist/UFC2Native-linux-x86_64.tar.gz ($built_from; newest glibc symbol $newest)"
+ls -lh dist/UFC2Native-linux-x86_64.tar.gz

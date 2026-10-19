@@ -50,7 +50,7 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 # read-only link tree of the merged CTR dump (update 1.21 over the base game).
 game=${BB_GAME_DIR:-}
 if [[ -z $game ]]; then
-    for candidate in orig/CUSA06534 orig/ufc2 orig/CUSA*; do
+    for candidate in orig/CUSA01968 orig/ufc2 orig/CUSA06534 orig/CUSA*; do
         [[ -f $candidate/eboot.bin ]] && { game=$candidate; break; }
     done
     game=${game:-orig/CUSA06534}

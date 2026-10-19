@@ -42,11 +42,12 @@ SUPPORTED_TITLE = 'CUSA06534'
 SUPPORTED_VERSION = '01.14'
 SUPPORTED_IMAGE = '46c2477702ae5d3fbff3a1911f10841aa150d20941d515ffb3edec75153f055b'
 
-# UFC 2 (2016, same EA Ignite engine family as UFC 3). Title IDs vary by region; add yours here or
-# let --register record it. The TITLE pattern catches any region's param.sfo.
+# UFC 2 (2016, same EA Ignite engine family as UFC 3). Target: CUSA01968 (shadPS4 compatibility
+# issue #391: boots to the menus there, then an image barrier assertion; see image.cpp). Other
+# regions' title IDs can be added here, or --register records a dump. The TITLE pattern catches any region's param.sfo.
 UFC2 = dict(name='ufc2', game='EA SPORTS UFC 2', version=None, update='<title>-patch',
             modules=('libc.prx', 'libSceFios2.prx'), patches=False)
-UFC2_TITLES = set()
+UFC2_TITLES = {'CUSA01968'}  # the build this branch targets; other regions are matched by TITLE
 UFC2_TITLE_RE = re.compile(r'\bUFC\W*2\b', re.IGNORECASE)
 
 
