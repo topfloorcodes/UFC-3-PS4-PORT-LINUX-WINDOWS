@@ -90,8 +90,25 @@ static void protect(void *p, size_t size, unsigned flags) {
     int mode = ((flags & 4) ? PROT_READ : 0) | ((flags & 2) ? PROT_WRITE : 0) | ((flags & 1) ? PROT_EXEC : 0);
     if (platform_protect(p, size, mode)) fail("changing page protection failed");
 }
-static ABI __attribute__((noreturn)) void unresolved(uint32_t id, uintptr_t argument) {
+/* Bring-up (BB_STUB_UNRESOLVED=1, off by default): an unsupported import returns 0 instead of
+ * stopping, logged once per import, so one run lists many of a new game's missing functions. A 0
+ * can be wrong for the caller (a NULL pointer, a "success" that was not), so the game may crash
+ * later; the STOP lines say where to look first. */
+static int stub_unresolved;
+static unsigned char *stub_reported;
+static _Atomic unsigned stub_count;
+static ABI uintptr_t unresolved(uint32_t id, uintptr_t argument) {
     if (id >= import_count) fail("bad import trap index");
+    if (stub_unresolved) {
+        if (stub_reported && !__atomic_exchange_n(&stub_reported[id], 1, __ATOMIC_RELAXED)) {
+            const unsigned n = ++stub_count;
+            printf("STUB %u: unsupported PS4 import %s (%s) -> 0; caller +0x%" PRIxPTR ", first argument 0x%" PRIxPTR "\n",
+                   n, names[id], runtime_import_name(names[id]),
+                   (uintptr_t)__builtin_return_address(0) - (uintptr_t)image, argument);
+            fflush(stdout);
+        }
+        return 0;
+    }
     printf("STOP: first unsupported PS4 import: %s (index %u)\n", names[id], id);
     printf("API: %s\n", runtime_import_name(names[id]));
     printf("Caller return offset: 0x%" PRIxPTR "; first argument: 0x%" PRIxPTR "\n",
@@ -384,6 +401,15 @@ int main(int argc, char **argv) {
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
         if (bbgpu_init(&gpu)) fail("GPU initialization failed");
         printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,bbgpu_symbol_count());
+    }
+    {
+        const char *stub = getenv("BB_STUB_UNRESOLVED");
+        stub_unresolved = stub && stub[0] == '1';
+        if (stub_unresolved) {
+            stub_reported = calloc(import_count ? import_count : 1, 1);
+            if (!stub_reported) fail("allocation failed");
+            puts("Bring-up: unsupported PS4 imports return 0 and are logged once (BB_STUB_UNRESOLVED=1)");
+        }
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);

@@ -44,6 +44,12 @@ folder**) with a short description of what the game window showed.
 
 - `STOP: first unsupported PS4 import: ...` — the game called a PS4 system function the port
   does not provide yet. Expected during bring-up: the name in that line is what to add next.
+- **`List missing functions.bat`** (after pressing Play once): writes `logs\imports.txt`, every
+  PS4 function the game uses and whether the port has it. Send it: it shows all the missing
+  ones at once.
+- **`Madden19 (bring-up, keep going).bat`**: starts the game with `BB_STUB_UNRESOLVED=1`, so a
+  missing function returns 0 (a `STUB` line in the log) instead of stopping the game. It may crash
+  later, but the log then shows how far the game gets.
 - Sound but a black window — a graphics problem (shadPS4 shows the same on some versions);
   the log and a screenshot help narrow it down.
 

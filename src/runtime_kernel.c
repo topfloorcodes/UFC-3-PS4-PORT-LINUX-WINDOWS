@@ -373,6 +373,12 @@ static ABI int32_t get_module_list(int32_t *handles, uint64_t capacity, uint64_t
         printf("Kernel: sceKernelGetModuleList -> %llu modules\n", (unsigned long long)out);
     return capacity < (uint64_t)n ? ERR(12) /* ENOMEM: more modules than room */ : 0;
 }
+/* madden19: getargc / getargv (libkernel). Frostbite reads its command line in libc's startup,
+ * before the game's entry runs (it also looks for /data/commandline.txt). The process has the
+ * one argument the guest entry receives: the eboot's path. */
+static const char *guest_argv[] = {"/app0/eboot.bin", NULL};
+static ABI int32_t get_argc(void) { return 1; }
+static ABI const char **get_argv(void) { return guest_argv; }
 /* libunwind helpers in libkernel: no program header matches (the unwinder falls back to its own
  * tables), and no return address is a signal trampoline. */
 static ABI int32_t elf_phdr_match_addr(void *phdr_info,void *address) { (void)phdr_info; (void)address; return 0; }
@@ -474,6 +480,7 @@ static const RuntimeExport exports[]={
     {"sceSysmoduleGetModuleInfoForUnwind",module_info_for_unwind},
     {"sceKernelGetModuleInfo",get_module_info}, {"sceKernelGetModuleInfoInternal",get_module_info},
     {"sceKernelGetModuleList",get_module_list},
+    {"getargc",get_argc}, {"getargv",get_argv},
     {"__elf_phdr_match_addr",elf_phdr_match_addr}, {"_is_signal_return",is_signal_return},
     {"sceKernelIsAddressSanitizerEnabled",sanitizer_enabled},
     {"sceKernelGetSanitizerMallocReplaceExternal",sanitizer_replace}, {"sceKernelGetSanitizerNewReplaceExternal",sanitizer_replace},
