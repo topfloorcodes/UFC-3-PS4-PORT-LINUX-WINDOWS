@@ -51,6 +51,14 @@ int main(void) {
     CHECK(batch(&grant, 1, &done) != 0, "prot 3 over reserved-only space -> still an error");
     BatchEntry back = {base, 0, M2, 3, 0, 0, 2};
     CHECK(batch(&back, 1, &done) == 0 && readable(mapped) && mapped[0] == 42, "prot 3 back on the mapped piece -> readable, data kept");
+    /* Madden 19's GPU memory: a fixed map below the user range (system-managed area). */
+    int64_t gpu_phys = 0;
+    CHECK(alloc(0, 0x100000000ll, 0x20000, 0x10000, 3, &gpu_phys) == 0, "allocate 128 KiB of GPU direct memory (type 3)");
+    BatchEntry low = {(void *)(uintptr_t)0x7f0000000ull, (uint64_t)gpu_phys, 0x20000, 0x33, 3, 0, 0};
+    CHECK(batch(&low, 1, &done) == 0 && done == 1, "BatchMap op 0 at 0x7f0000000, prot 0x33 -> mapped");
+    volatile char *g = (volatile char *)(uintptr_t)0x7f0000000ull;
+    g[0x1ffff] = 7;
+    CHECK(readable(g) && g[0x1ffff] == 7, "the low mapping is readable and writable");
     printf("%s\n", failures ? "SOME CHECKS FAILED" : "all checks passed");
     return failures != 0;
 }

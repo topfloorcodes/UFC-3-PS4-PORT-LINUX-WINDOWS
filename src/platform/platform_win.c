@@ -177,7 +177,9 @@ static size_t save_protections(uintptr_t start, uintptr_t end, ProtRun **runs, s
 /* Leaves [a,b) as exactly one unmapped placeholder; returns its region index, or (size_t)-1 when
  * the range is not inside the reservation. */
 static size_t carve_host(uintptr_t a, uintptr_t b) {
-    if (a < reserve_lo || b > reserve_hi || a >= b) return (size_t)-1;
+    /* Inside the reservation or an extra window (extend_reservation); the region walk below
+     * rejects anything not fully covered. */
+    if (a >= b) return (size_t)-1;
     size_t first = region_index(a), last = first;
     if (first == region_count || regions[first].start > a) return (size_t)-1;
     while (last < region_count && regions[last].start < b) ++last;
@@ -229,8 +231,32 @@ int platform_pool_create(uint64_t bytes, unsigned char **backing) {
     *backing = MapViewOfFile3(section, GetCurrentProcess(), NULL, 0, bytes, 0, PAGE_READWRITE, NULL, 0);
     return *backing ? 0 : -1;
 }
+/* madden19: fixed mappings below the PS4 user range, in the console's system-managed area
+ * (Frostbite maps GPU memory at 0x7f0000000, just under the executable at 0x800000000). The
+ * free part of the 1 GiB window around the request is reserved as one more placeholder, the
+ * first time something is mapped there. Address space only; nothing is committed. */
+static int extend_reservation(uintptr_t a, uintptr_t b) {
+    const uintptr_t window = (uintptr_t)1 << 30, granule = 0x10000;
+    if (a >= reserve_lo || b > reserve_lo || a >= b) return -1;
+    MEMORY_BASIC_INFORMATION m;
+    if (!VirtualQuery((void *)a, &m, sizeof(m)) || m.State != MEM_FREE) return -1;
+    uintptr_t free_lo = ((uintptr_t)m.BaseAddress + granule - 1) & ~(granule - 1);
+    uintptr_t free_hi = ((uintptr_t)m.BaseAddress + m.RegionSize) & ~(granule - 1);
+    uintptr_t lo = a & ~(window - 1), hi = (b + window - 1) & ~(window - 1);
+    if (lo < free_lo) lo = free_lo;
+    if (hi > free_hi) hi = free_hi;
+    if (hi > reserve_lo) hi = reserve_lo;
+    if (lo > a || hi < b) return -1;
+    if (!VirtualAlloc2(NULL, (void *)lo, hi - lo, MEM_RESERVE | MEM_RESERVE_PLACEHOLDER, PAGE_NOACCESS, NULL, 0)) return -1;
+    region_insert(region_index(lo), (HostRegion){lo, hi, 0, 0});
+    static int reported;
+    if (reported++ < 8)
+        printf("Runtime: reserved %p-%p for fixed mappings below the user range (system-managed area)\n", (void *)lo, (void *)hi);
+    return 0;
+}
 int platform_pool_map(uintptr_t address, uint64_t size, int prot, int reserved, uint64_t phys) {
     size_t i = carve_host(address, address + size);
+    if (i == (size_t)-1 && !extend_reservation(address, address + size)) i = carve_host(address, address + size);
     if (i == (size_t)-1) return -1;
     if (reserved) return 0;
     regions[i].phys = phys; regions[i].mapped = 1;

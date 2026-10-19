@@ -32,3 +32,8 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
    0x1040a00000 -> EINVAL: protection changes required fully mapped memory. Frostbite makes guard
    regions no-access over reserved / unmapped space; build 7 accepts prot 0 there (mapped pieces
    protected as before; granting access to unbacked memory still fails). tests/test_memory_guard.c.
+6. Build 7: guard accepted; got through UserService, pad (controller found), VideoOut open,
+   flip rate, Gnm init (~4M calls). Then `sceKernelBatchMap` op 0 FAILED (ENOMEM): Frostbite maps
+   128 KiB of GPU memory (type 3, prot 0x33) at fixed 0x7f0000000, below the PS4 user range (the
+   console's system-managed area). Windows only reserved 0x1000000000+; build 8 reserves the free
+   1 GiB window around such a request on demand (platform_win.c extend_reservation).
