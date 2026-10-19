@@ -546,6 +546,7 @@ static ABI int32_t map_flexible_named(void **inout, uint64_t size, int prot, int
     (void)name; return map_flexible(inout,size,prot,flags);
 }
 static ABI int32_t release_flexible(void *address, uint64_t size) { return direct_unmap(address,size); }
+uint64_t runtime_memory_flexible_available(void) { return flexible_bytes < FLEXIBLE_SIZE ? FLEXIBLE_SIZE - flexible_bytes : 0; }
 /* POSIX mmap: the game's libc grows its malloc heap with anonymous private mappings once the
  * heap it started with is full (seen after minutes of area streaming). They come from flexible
  * memory as sceKernelMapFlexibleMemory does; files are not mapped. MAP_FAILED (-1) and errno on

@@ -90,6 +90,10 @@ static inline int runtime_nid_equals(const char *name, const char *pattern) {
 int runtime_load_import_names(const char *path);
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid);
 uintptr_t runtime_kernel_resolve(const char *name);
+/* madden19: functions new games need beyond the UFC ports (runtime_bringup.c). */
+uintptr_t runtime_bringup_resolve(const char *name);
+/* Flexible memory not yet mapped (sceKernelAvailableFlexibleMemorySize). */
+uint64_t runtime_memory_flexible_available(void);
 /* ufc2: a module the loader mapped, for sceKernelGetModuleInfo (handle = registration order: the
  * eboot first, then the linked PRXs). `addresses` are image offsets; `flags` ELF p_flags. */
 void runtime_kernel_register_module(const char *name, uintptr_t image, const uint64_t *addresses,

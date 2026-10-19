@@ -480,6 +480,7 @@ static const RuntimeExport exports[]={
     {"sceSysmoduleGetModuleInfoForUnwind",module_info_for_unwind},
     {"sceKernelGetModuleInfo",get_module_info}, {"sceKernelGetModuleInfoInternal",get_module_info},
     {"sceKernelGetModuleList",get_module_list},
+    {"sceKernelGetModuleInfo2",get_module_info}, {"sceKernelGetModuleList2",get_module_list},
     {"getargc",get_argc}, {"getargv",get_argv},
     {"__elf_phdr_match_addr",elf_phdr_match_addr}, {"_is_signal_return",is_signal_return},
     {"sceKernelIsAddressSanitizerEnabled",sanitizer_enabled},
