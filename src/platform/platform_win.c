@@ -690,6 +690,29 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         fprintf(stderr, "Fault: exception 0x%08lx at %s (thread %lu %s)\n", record->ExceptionCode, where, GetCurrentThreadId(), thread);
     fprintf(stderr, "  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n  rsi=%016llx rdi=%016llx rbp=%016llx rsp=%016llx\n",
             c->Rax, c->Rbx, c->Rcx, c->Rdx, c->Rsi, c->Rdi, c->Rbp, c->Rsp);
+    fprintf(stderr, "  r8=%016llx r9=%016llx r10=%016llx r11=%016llx\n  r12=%016llx r13=%016llx r14=%016llx r15=%016llx\n",
+            c->R8, c->R9, c->R10, c->R11, c->R12, c->R13, c->R14, c->R15);
+    /* Bring-up: the code around a guest fault (64 bytes before, 32 from the faulting instruction
+     * on) for disassembly, and the guest return addresses on the stack, which give the call
+     * chain on threads without frame pointers (Frostbite's job threads). */
+    if (guest_image && c->Rip - (uintptr_t)guest_image < guest_image_size) {
+        unsigned char code[96];
+        if (platform_safe_read((uintptr_t)c->Rip - 64, code, sizeof(code))) {
+            fprintf(stderr, "  code at guest offset 0x%llx-64:", (unsigned long long)(c->Rip - (uintptr_t)guest_image));
+            for (size_t k = 0; k < sizeof(code); ++k) fprintf(stderr, "%s%02x", k == 64 ? " | " : k % 16 ? " " : "\n    ", code[k]);
+            fputc('\n', stderr);
+        }
+        int found = 0;
+        for (uintptr_t at = (uintptr_t)c->Rsp; at < (uintptr_t)c->Rsp + 0x1000 && found < 16; at += 8) {
+            uintptr_t v;
+            if (!platform_safe_read(at, &v, sizeof(v))) break;
+            if (v - (uintptr_t)guest_image < guest_image_size) {
+                if (!found++) fprintf(stderr, "  guest addresses on the stack (possible return addresses):\n");
+                fprintf(stderr, "    rsp+0x%03llx: guest offset 0x%llx\n", (unsigned long long)(at - (uintptr_t)c->Rsp),
+                        (unsigned long long)(v - (uintptr_t)guest_image));
+            }
+        }
+    }
     if (fault_extra) fault_extra(info);
     /* rbp chain (guest and host code keep frame pointers). */
     uintptr_t rbp = (uintptr_t)c->Rbp;

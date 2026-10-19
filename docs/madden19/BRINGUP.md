@@ -41,3 +41,9 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
    submissions. Stopped in the shader recompiler: translate.cpp SetDst "Unknown field 126"
    (EXEC_LO as a 32-bit destination). Build 9 handles 32-bit writes to EXEC_LO / EXEC_HI (the
    other half keeps its lanes).
+8. Build 9: **menus work; Play Now started the game intro (close-up grass) and then crashed**
+   (~30 s, 773M runtime calls; save data, trophies, Ajm audio, indirect draws). Crash: thread
+   Job5 read 0xF74C (NULL + offset) at guest 0x2ef5a3b; no frame-pointer chain on job threads.
+   Not network (offline NetCtl says not connected); modules not found: Engine.BuildInfo.prx and
+   EAWebKit.prx (menus still worked). Build 10's crash report adds r8-r15, the code bytes around
+   the fault and guest return addresses found on the stack.
