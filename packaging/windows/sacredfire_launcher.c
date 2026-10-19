@@ -956,6 +956,12 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
          * (BB_IMPORT_TRACE=0 before starting the launcher turns it off). */
         if (!wcscmp(profile_w, L"madden19") && !GetEnvironmentVariableW(L"BB_IMPORT_TRACE", NULL, 0))
             SetEnvironmentVariableW(L"BB_IMPORT_TRACE", L"1");
+        /* madden19: relaxed readbacks. Precise ones read-protect GPU-written pages, and on
+         * Windows every read fault's exception frame lands on the guest stack's 128-byte red zone
+         * (Windows x64 has none; PS4 and Linux code may keep values there): Frostbite's job code
+         * reloaded a clobbered pointer and crashed (docs/madden19/BRINGUP.md, run 10). A
+         * BB_READBACKS set before the launcher wins. */
+        if (!wcscmp(profile_w, L"madden19")) game_env(L"BB_READBACKS", L"1");
     }
 #ifdef UFC3_WRITE_WINDOWS_TEST
     /* UFC-48 test launcher (UFC3-WRITE-WINDOWS-TEST.exe; UFC3.exe is the release one, unchanged):

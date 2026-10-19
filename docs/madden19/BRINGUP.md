@@ -47,3 +47,10 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
    Not network (offline NetCtl says not connected); modules not found: Engine.BuildInfo.prx and
    EAWebKit.prx (menus still worked). Build 10's crash report adds r8-r15, the code bytes around
    the fault and guest return addresses found on the stack.
+9. Build 10 crash report, decoded: a leaf function in Frostbite's job code keeps rbp/rbx in the
+   128-byte red zone below rsp, reads a page that precise readbacks (BB_READBACKS=2) protect,
+   and the read fault's exception frame - Windows x64 builds it right below rsp, it has no red
+   zone - overwrites them (rbx=0, rbp=1, r9=0+r13 at the fault). Linux honours the red zone.
+   Build 11 defaults madden19 on Windows to relaxed readbacks (no read protection, no read
+   faults); "Madden19 (precise readbacks, may crash).bat" for comparison. Write-tracking faults
+   remain and share the hazard, but they are far rarer.
