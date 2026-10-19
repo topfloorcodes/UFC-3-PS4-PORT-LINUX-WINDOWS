@@ -136,32 +136,69 @@ static int gpu_fault(void *context, void *address) {
 static int gpu_step(void *context) { return gpu_enabled && bbgpu_handle_step(context); }
 static bb_fault_jmp_buf *recover_point(void) { bb_fault_jmp_buf *r = runtime_fault_recover; runtime_fault_recover = NULL; return r; }
 /* Bring-up (BB_IMPORT_TRACE=1, off by default): every import the runtime answers goes through a
- * 60-byte stub that records its index in a ring buffer (all threads, no locking beyond one
+ * small stub that records its index in a ring buffer (all threads, no locking beyond one
  * atomic add, no logging), then jumps to the implementation. The fault report prints the last
  * calls, which shows which PS4 function's answer a crash follows. */
-#define TRACE_RING 1024u
+#define TRACE_RING 16384u
+#define FIRST_RING 4096u
 static uint32_t *trace_ring;
 static uint64_t trace_counter __attribute__((aligned(64)));
+/* First calls: the order in which the game used each runtime function for the first time. */
+static unsigned char *trace_seen;
+static uint32_t *first_ring;
+static uint64_t first_counter __attribute__((aligned(64)));
 static unsigned char *trace_stubs;
 static uintptr_t *trace_stub_of;
 static void trace_report(void) {
     if (!trace_ring) return;
+    const uint64_t first_end = __atomic_load_n(&first_counter, __ATOMIC_RELAXED);
+    const uint64_t first_shown = first_end < 40 ? first_end : 40;
+    printf("PS4 functions the game used for the first time, last %llu of %llu, oldest first (BB_IMPORT_TRACE):\n",
+           (unsigned long long)first_shown, (unsigned long long)first_end);
+    for (uint64_t k = first_end - first_shown; k < first_end; ++k) {
+        const uint32_t id = first_ring[k % FIRST_RING];
+        printf("  first #%llu: %s\n", (unsigned long long)k + 1, id < import_count ? runtime_import_name(names[id]) : "?");
+    }
+    /* The recent calls with repeats collapsed ("strlen x40"), up to 60 runs back. */
     const uint64_t end = __atomic_load_n(&trace_counter, __ATOMIC_RELAXED);
-    const uint64_t shown = end < 64 ? end : 64;
-    printf("Last %llu PS4 calls answered by the runtime, oldest first (all threads, BB_IMPORT_TRACE):\n", (unsigned long long)shown);
-    for (uint64_t k = end - shown; k < end; ++k) {
-        const uint32_t id = trace_ring[k % TRACE_RING];
-        printf("  %llu: %s\n", (unsigned long long)k, id < import_count ? runtime_import_name(names[id]) : "?");
+    const uint64_t start = end > TRACE_RING ? end - TRACE_RING : 0;
+    uint32_t run_id[60]; uint64_t run_count[60]; int runs = 0;
+    for (uint64_t k = end; k > start && runs <= 60; --k) {
+        const uint32_t id = trace_ring[(k - 1) % TRACE_RING];
+        if (runs && run_id[runs - 1] == id) { ++run_count[runs - 1]; continue; }
+        if (runs == 60) break;
+        run_id[runs] = id; run_count[runs] = 1; ++runs;
+    }
+    printf("Last PS4 calls answered by the runtime, repeats collapsed, oldest first (all threads; %llu calls in all):\n",
+           (unsigned long long)end);
+    for (int r = runs - 1; r >= 0; --r) {
+        const char *n = run_id[r] < import_count ? runtime_import_name(names[run_id[r]]) : "?";
+        if (run_count[r] > 1) printf("  %s x%llu\n", n, (unsigned long long)run_count[r]); else printf("  %s\n", n);
     }
     fflush(stdout);
 }
 static uintptr_t trace_wrap(uint32_t id, uintptr_t target) {
     if (!trace_stubs) return target;
     if (trace_stub_of[id]) return trace_stub_of[id];
-    unsigned char *t = trace_stubs + (size_t)id * 64;
+    unsigned char *t = trace_stubs + (size_t)id * 128;
     uintptr_t counter = (uintptr_t)&trace_counter, ring = (uintptr_t)trace_ring;
-    uint32_t mask = TRACE_RING - 1;
+    uintptr_t seen = (uintptr_t)(trace_seen + id), fcounter = (uintptr_t)&first_counter, fring = (uintptr_t)first_ring;
+    uint32_t mask = TRACE_RING - 1, fmask = FIRST_RING - 1;
     unsigned char *c = t;
+    /* First call of this import: append it to the first-use list. */
+    *c++ = 0x49; *c++ = 0xba; memcpy(c, &seen, 8); c += 8;                /* movabs r10, &seen[id] */
+    *c++ = 0x41; *c++ = 0xb3; *c++ = 1;                                   /* mov r11b, 1 */
+    *c++ = 0x45; *c++ = 0x86; *c++ = 0x1a;                                /* xchg [r10], r11b */
+    *c++ = 0x45; *c++ = 0x84; *c++ = 0xdb;                                /* test r11b, r11b */
+    *c++ = 0x75; unsigned char *skip = c++;                               /* jnz past the append */
+    unsigned char *append = c;
+    *c++ = 0x49; *c++ = 0xba; memcpy(c, &fcounter, 8); c += 8;            /* movabs r10, &first_counter */
+    *c++ = 0x49; *c++ = 0xc7; *c++ = 0xc3; *c++ = 1; *c++ = 0; *c++ = 0; *c++ = 0; /* mov r11, 1 */
+    *c++ = 0xf0; *c++ = 0x4d; *c++ = 0x0f; *c++ = 0xc1; *c++ = 0x1a;      /* lock xadd [r10], r11 */
+    *c++ = 0x49; *c++ = 0x81; *c++ = 0xe3; memcpy(c, &fmask, 4); c += 4;  /* and r11, fmask */
+    *c++ = 0x49; *c++ = 0xba; memcpy(c, &fring, 8); c += 8;               /* movabs r10, first_ring */
+    *c++ = 0x43; *c++ = 0xc7; *c++ = 0x04; *c++ = 0x9a; memcpy(c, &id, 4); c += 4; /* mov dword [r10+r11*4], id */
+    *skip = (unsigned char)(c - append);
     *c++ = 0x49; *c++ = 0xba; memcpy(c, &counter, 8); c += 8;             /* movabs r10, &counter */
     *c++ = 0x49; *c++ = 0xc7; *c++ = 0xc3; *c++ = 1; *c++ = 0; *c++ = 0; *c++ = 0; /* mov r11, 1 */
     *c++ = 0xf0; *c++ = 0x4d; *c++ = 0x0f; *c++ = 0xc1; *c++ = 0x1a;      /* lock xadd [r10], r11 */
@@ -453,9 +490,11 @@ int main(int argc, char **argv) {
         const char *trace = getenv("BB_IMPORT_TRACE");
         if (trace && trace[0] == '1' && import_count) {
             trace_ring = calloc(TRACE_RING, sizeof(uint32_t));
+            first_ring = calloc(FIRST_RING, sizeof(uint32_t));
+            trace_seen = calloc(import_count, 1);
             trace_stub_of = calloc(import_count, sizeof(uintptr_t));
-            trace_stubs = allocate(round_page(import_count * 64));
-            if (!trace_ring || !trace_stub_of || !trace_stubs) fail("allocation failed");
+            trace_stubs = allocate(round_page(import_count * 128));
+            if (!trace_ring || !first_ring || !trace_seen || !trace_stub_of || !trace_stubs) fail("allocation failed");
             puts("Bring-up: PS4 calls answered by the runtime are recorded for the fault report (BB_IMPORT_TRACE=1)");
         }
     }
@@ -538,7 +577,7 @@ int main(int argc, char **argv) {
         free(addresses); free(sizes); free(flags); free(pointers);
     }
     protect(traps, round_page((import_count + 1) * 32), 5);
-    if (trace_stubs) protect(trace_stubs, round_page(import_count * 64), 5);
+    if (trace_stubs) protect(trace_stubs, round_page(import_count * 128), 5);
     protect(image, round_page(size), 0);
     int executable_entry = 0;
     for (uint64_t i = 0; i < ns; ++i) {
@@ -565,6 +604,7 @@ int main(int argc, char **argv) {
             char name[32];
             if (m < 0) snprintf(name, sizeof(name), "eboot.bin");
             else if (m == 0) snprintf(name, sizeof(name), "libc.prx");
+            else if (m == 1) snprintf(name, sizeof(name), "libSceFios2.prx"); /* the default link order */
             else snprintf(name, sizeof(name), "module%" PRId64 ".prx", m);
             runtime_kernel_register_module(name, (uintptr_t)image, addresses, sizes, flags, k);
         }
