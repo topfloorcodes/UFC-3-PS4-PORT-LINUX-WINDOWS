@@ -48,7 +48,13 @@ fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
 # BB_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default: orig/CUSA13795, SacredFire's
 # read-only link tree of the merged CTR dump (update 1.21 over the base game).
-game=${BB_GAME_DIR:-orig/CUSA06534}
+game=${BB_GAME_DIR:-}
+if [[ -z $game ]]; then
+    for candidate in orig/CUSA06534 orig/ufc2 orig/CUSA*; do
+        [[ -f $candidate/eboot.bin ]] && { game=$candidate; break; }
+    done
+    game=${game:-orig/CUSA06534}
+fi
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set BB_GAME_DIR)." >&2; exit 1; fi
 # The game check (scripts/game_check.py) compares the executable image with the supported one
 # (Crash Team Racing Nitro-Fueled CUSA13795 1.21) and names the profile the runtime reads.
@@ -56,7 +62,16 @@ profile=$("$PYTHON" scripts/game_check.py "$game") || { echo "$profile" >&2; exi
 # The update's build (5.05, 6.72+ or ?): the address-keyed diagnostics know the 5.05 build only.
 export BB_GAME_VARIANT=$("$PYTHON" scripts/game_check.py "$game" --variant 2>/dev/null || echo '?')
 export BB_GAME_PROFILE=${profile:-ufc3}
-echo "Game profile: $BB_GAME_PROFILE"
+# Title ID, version and linked modules come from the profile (UFC 2: from its param.sfo).
+title_id=$("$PYTHON" scripts/game_check.py "$game" --field title 2>/dev/null || true); title_id=${title_id:-CUSA06534}
+app_ver=$("$PYTHON" scripts/game_check.py "$game" --field version 2>/dev/null || true); app_ver=${app_ver:-01.14}
+read -r -a link_mods <<< "$("$PYTHON" scripts/game_check.py "$game" --field modules 2>/dev/null || echo 'libc.prx libSceFios2.prx')"
+present_mods=(); for m in "${link_mods[@]}"; do [[ -f $game/sce_module/$m ]] && present_mods+=("$m"); done
+export BB_TITLE_ID=$title_id
+echo "Game profile: $BB_GAME_PROFILE ($title_id $app_ver, build variant $BB_GAME_VARIANT)"
+if [[ $BB_GAME_PROFILE == ufc2 && $app_ver == 01.00 ]]; then
+    echo "UFC 2: this is the base game (01.00); merge the last update ($title_id-patch) in if you have it." >&2
+fi
 # ufc3: the fight scene renders black without precise readbacks of linear images (the same as
 # shadPS4 issue #4375 for UFC 4, same engine); both are defaults for this game.
 if [[ $BB_GAME_PROFILE == ufc3 ]]; then
@@ -93,6 +108,38 @@ if [[ $BB_GAME_PROFILE == ufc3 ]]; then
     done
     echo "UFC 3: readbacks ${BB_READBACKS} (2 = precise), linear image readbacks ${BB_READBACK_LINEAR}"
 fi
+# ufc2: bring-up profile (docs/ufc2/BRINGUP.md). UFC 2 is the previous game on the same EA Ignite
+# engine, so it starts from UFC 3's engine-level defaults (precise readbacks of linear images,
+# no write twins, Z16S8 as D16, uncapped flip with a virtual vblank). Left out until checked on a
+# UFC 2 dump: UFC 3's shader patches (keyed by UFC 3 shader hashes), write windows / single-stepped
+# writes (tuned against UFC 3's memcpy sites), movie skipping and online play (UFC 2 talks to a
+# different Blaze server version; UFC 3's private server does not speak it). Each is one
+# environment variable away for testing, e.g. BB_WRITE_WINDOW=1.
+if [[ $BB_GAME_PROFILE == ufc2 ]]; then
+    export BB_READBACKS=${BB_READBACKS:-2} BB_READBACK_LINEAR=${BB_READBACK_LINEAR:-1}
+    export BB_GPU_WRITE_TWINS=${BB_GPU_WRITE_TWINS:-0}
+    export BB_WRITE_WINDOW=${BB_WRITE_WINDOW:-0} BB_PREUPLOAD=${BB_PREUPLOAD:-1} BB_WRITE_STEP=${BB_WRITE_STEP:-0}
+    export BB_SKIP_MOVIES=${BB_SKIP_MOVIES:-0}
+    export BB_FLIP_RATE=${BB_FLIP_RATE:-0} BB_VBLANK_HZ=${BB_VBLANK_HZ:-480} BB_FPS_LIMIT=${BB_FPS_LIMIT:-60}
+    export BB_Z16S8_AS_D16=${BB_Z16S8_AS_D16:-1}
+    if [[ -n ${BB_ONLINE_SERVER:-} ]]; then
+        echo "UFC 2: online play is not ported (BB_ONLINE_SERVER ignored); playing offline." >&2
+        unset BB_ONLINE_SERVER
+    fi
+    # UFC 2 shader patches, once there are any: patches/shaders-ufc2/<hash>.comp.
+    export BB_SHADER_PATCH_DIR=patch-ufc2
+    patch_out="${BB_USER_DIR:-$data/user}/shader/patch-ufc2"
+    mkdir -p "$patch_out"
+    for src in patches/shaders-ufc2/*.comp; do
+        [[ -e $src ]] || continue
+        spv="$patch_out/$(basename "${src%.comp}").spv"
+        if [[ ! -f $spv || $src -nt $spv ]]; then
+            glslangValidator -V --target-env vulkan1.3 -S comp "$src" -o "$spv" > /dev/null \
+                || { echo "Shader patch failed: $src" >&2; exit 1; }
+        fi
+    done
+    echo "UFC 2 (bring-up): readbacks ${BB_READBACKS}, write windows ${BB_WRITE_WINDOW}, frame limit ${BB_FPS_LIMIT}"
+fi
 original_game=$game
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
     --mods-dir "${BB_MODS_DIR:-$data/mods}" --config "${BB_MODS_CONFIG:-$data/mods.json}" \
@@ -104,7 +151,7 @@ if [[ $game != "$(realpath "$original_game")" ]]; then
 fi
 "$PYTHON" scripts/prepare.py "$game" --out "$out"
 "$PYTHON" scripts/link_libc.py "$game" --out "$out"
-"$PYTHON" scripts/link_modules.py "$game" --out "$out" --modules libc.prx libSceFios2.prx
+"$PYTHON" scripts/link_modules.py "$game" --out "$out" --modules "${present_mods[@]}"
 # SacredFire: symbol names for this eboot's host-side imports (shadPS4's aerolib list, fetched once).
 aerolib_args=(); [[ -f share/aerolib.inl ]] && aerolib_args=(--aerolib share/aerolib.inl)  # packaged copy
 "$PYTHON" tools/gen_import_names.py --out "$out" "${aerolib_args[@]}"
@@ -115,19 +162,19 @@ aerolib_args=(); [[ -f share/aerolib.inl ]] && aerolib_args=(--aerolib share/aer
 # keys) or patches.json; BB_PATCHES_DIR adds a folder of further shadPS4-format XML files.
 fps=${BB_FPS:-30}
 "$PYTHON" scripts/patches.py --patches-dir "${BB_PATCHES_DIR:-patches}" --patches-config "${BB_PATCHES_CONFIG:-$data/patches.json}" \
-    --app-version 01.14 --title-id CUSA06534 --out "$out" --settings "$BB_CONFIG"
+    --app-version "$app_ver" --title-id "$title_id" --out "$out" --settings "$BB_CONFIG"
 patch_args=(--patches "$out/patches.bin")
 # BB_NEO=1: PS4 Pro mode (sceKernelIsNeoMode, 7-CPU mode, 5568 MiB direct memory); the game then
 # picks its Pro rendering path. Off by default: the Steam Deck is closer to a base PS4.
 export BB_NEO=${BB_NEO:-0}
 echo "PS4 Pro mode: ${BB_NEO} (BB_NEO=1 turns it on)"
-# The on-disk shader/pipeline cache (user/cache/CUSA06534) is kept across launches: the GPU
+# The on-disk shader/pipeline cache (user/cache/<title id>) is kept across launches: the GPU
 # library preloads every pipeline from earlier sessions at start, so areas seen before no longer
 # compile shaders mid-race. BB_CLEAR_SHADER_CACHE=1 (launcher: "Clear the shader cache at start")
 # deletes it first; the fur breakage that once forced a clear per launch is fixed
 # (docs/sacredfire/06-fur.md: geometry specialization and preload fetch shader).
 if [[ ${BB_CLEAR_SHADER_CACHE:-0} == 1 ]]; then
-    rm -rf "${BB_USER_DIR:-$data/user}/cache/CUSA06534"
+    rm -rf "${BB_USER_DIR:-$data/user}/cache/$title_id"
     echo "Shader cache: cleared for this launch (BB_CLEAR_SHADER_CACHE=1)"
 fi
 # With the 60 FPS patch the game's own limiter paces frames; a 60 Hz virtual vblank would

@@ -46,7 +46,7 @@ set_rpath '$ORIGIN/gpu:$ORIGIN/lib' "$stage/bin/sacredfire"
 set_rpath '$ORIGIN/lib' "$stage/bin/bb-gpu-capabilities"
 set_rpath '$ORIGIN/../lib' "$stage/bin/gpu/libbbgpu.so"
 for f in "$stage"/bin/lib/*.so*; do set_rpath '$ORIGIN' "$f"; done
-install -m755 run.sh packaging/linux/ufc3.sh packaging/linux/UFC3.sh "$stage/"
+install -m755 run.sh packaging/linux/ufc3.sh packaging/linux/UFC3.sh packaging/linux/ufc2.sh "$stage/"
 cp launcher/ufc3_launcher.py launcher/ufc3_online.py "$stage/launcher/"
 cp packaging/linux/ufc3.conf.example packaging/linux/README-Linux.md LICENSE "$stage/"
 cp out/VERSION "$stage/VERSION"

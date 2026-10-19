@@ -1658,7 +1658,12 @@ std::optional<std::vector<u32>> PipelineCache::GetShaderPatch(u64 hash, Shader::
                                                               std::string_view ext) {
 
     using namespace Common::FS;
-    const auto patch_dir = GetUserPath(PathType::ShaderDir) / "patch";
+    // ufc2: BB_SHADER_PATCH_DIR names the folder under the shader dir (run.sh: "patch" for UFC 3,
+    // "patch-ufc2" for UFC 2), so one game's patches, keyed by its shader hashes, never load in
+    // the other.
+    const char* patch_env = std::getenv("BB_SHADER_PATCH_DIR");
+    const auto patch_dir = GetUserPath(PathType::ShaderDir) /
+                           ((patch_env && patch_env[0]) ? patch_env : "patch");
     if (!std::filesystem::exists(patch_dir)) {
         std::filesystem::create_directories(patch_dir);
     }

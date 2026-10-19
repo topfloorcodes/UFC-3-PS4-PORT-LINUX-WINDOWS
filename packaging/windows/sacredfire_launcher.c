@@ -816,7 +816,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
         const wchar_t *args[] = {game};
         if (script(L"scripts", L"game_check.py", args, 1, profile, sizeof(profile))) {
             logf("%s", profile);
-            fail(L"The game check failed (see the log): the folder is not EA SPORTS UFC 3 CUSA06534 with the 1.14 update (CUSA06534-patch) beside it or merged in.");
+            fail(L"The game check failed (see the log): the folder is not EA SPORTS UFC 3 CUSA06534 with the 1.14 update, nor EA SPORTS UFC 2.");
             return 2;
         }
         trim(profile);
@@ -833,7 +833,23 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     }
     wchar_t profile_w[64]; MultiByteToWideChar(CP_UTF8, 0, profile, -1, profile_w, 64); profile_w[63] = 0;
     SetEnvironmentVariableW(L"BB_GAME_PROFILE", profile_w);
-    logw(L"Game profile: %ls\n", profile_w);
+    const int is_ufc2 = !wcscmp(profile_w, L"ufc2");
+    /* Title ID and version from the profile (UFC 2: its own param.sfo); UFC 3's if unknown. */
+    wchar_t title_id[32] = L"CUSA06534", app_ver[16] = L"01.14";
+    {
+        char value[64] = "";
+        const wchar_t *title_args[] = {game, L"--field", L"title"};
+        if (script(L"scripts", L"game_check.py", title_args, 3, value, sizeof(value)) == 0) {
+            trim(value); if (value[0]) { MultiByteToWideChar(CP_UTF8, 0, value, -1, title_id, 32); title_id[31] = 0; }
+        }
+        value[0] = 0;
+        const wchar_t *ver_args[] = {game, L"--field", L"version"};
+        if (script(L"scripts", L"game_check.py", ver_args, 3, value, sizeof(value)) == 0) {
+            trim(value); if (value[0]) { MultiByteToWideChar(CP_UTF8, 0, value, -1, app_ver, 16); app_ver[15] = 0; }
+        }
+    }
+    SetEnvironmentVariableW(L"BB_TITLE_ID", title_id);
+    logw(L"Game profile: %ls (%ls %ls)\n", profile_w, title_id, app_ver);
     /* Preparation (scripts/ as run.sh runs them; mod overlays need symlinks and are not applied here). */
     const wchar_t *prepare[] = {game, L"--out", out};
     if (script(L"scripts", L"prepare.py", prepare, 3, NULL, 0)) { fail(L"prepare.py failed (see the log)"); return 2; }
@@ -848,7 +864,10 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     /* 2K / 4K: the experiment's folder and json instead of the community patches (as
      * tools/ufc45-4k-test.sh and ufc46-1440p-test.sh run them); a BB_PATCHES_DIR or
      * BB_PATCHES_CONFIG the launcher was started with wins. */
-    const wchar_t *experiment = resolution_experiment[settings.resolution];
+    /* The 2K / 4K experiments patch UFC 3's executable by address: UFC 3 only. */
+    const wchar_t *experiment = is_ufc2 ? NULL : resolution_experiment[settings.resolution];
+    if (is_ufc2 && resolution_experiment[settings.resolution])
+        logw(L"UFC 2: the 2K / 4K experiment is UFC 3 only; playing at the native resolution.\n");
     wchar_t patches_dir[PATHW], patches_config[PATHW];
     if (experiment) {
         join(patches_dir, PATHW, root, L"patches\\experiments"); join(patches_dir, PATHW, patches_dir, experiment);
@@ -861,7 +880,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     const wchar_t *patches_dir_used = given_env(L"BB_PATCHES_DIR") ? given_env(L"BB_PATCHES_DIR") : patches_dir;
     const wchar_t *patches_config_used = given_env(L"BB_PATCHES_CONFIG") ? given_env(L"BB_PATCHES_CONFIG") : patches_config;
     const wchar_t *patch_args[] = {L"--patches-dir", patches_dir_used, L"--patches-config", patches_config_used,
-                                   L"--app-version", L"01.14", L"--title-id", L"CUSA06534", L"--out", out, L"--settings", config};
+                                   L"--app-version", app_ver, L"--title-id", title_id, L"--out", out, L"--settings", config};
     if (script(L"scripts", L"patches.py", patch_args, 12, NULL, 0)) { fail(L"patches.py failed (see the log)"); return 2; }
     /* The count of guest TCB loads the linker rewrote (link.json fs_loads_patched): the game
      * executable cross-checks its own scan against it. */
@@ -902,6 +921,10 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     if (settings.online_mode == ONLINE_HOST && given_env(L"BB_ONLINE_SERVER") && wcscmp(given_env(L"BB_ONLINE_SERVER"), settings.host_address)) {
         fail(L"BB_ONLINE_SERVER differs from the selected Host address. Remove the environment override or select that same local IP."); return 2;
     }
+    if (is_ufc2 && online) {
+        /* UFC 2 talks to another Blaze server version; tools\ufc3_server.py does not speak it. */
+        fail(L"Online play is not ported to UFC 2 yet: choose Offline."); return 2;
+    }
     game_env(L"BB_ONLINE_SERVER", online);
     /* The fight scene renders black without precise readbacks of linear images (shadPS4 issue
      * #4375, UFC 4, same engine); precise readbacks deadlock against the GPU write twins, so
@@ -922,6 +945,12 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     /* Pre-upload restores blood and sweat on hits (UFC-49); validated on Windows together with
      * the write windows above. The user's environment wins over all three. */
     game_env(L"BB_PREUPLOAD", L"1");
+    if (is_ufc2) {
+        /* UFC 2 bring-up (docs/ufc2/BRINGUP.md): the write windows were tuned on UFC 3's copy
+         * sites; off until checked on UFC 2. Its own shader patches live in shader\patch-ufc2. */
+        game_env(L"BB_WRITE_WINDOW", L"0"); game_env(L"BB_WRITE_STEP", L"0");
+        SetEnvironmentVariableW(L"BB_SHADER_PATCH_DIR", L"patch-ufc2");
+    }
 #ifdef UFC3_WRITE_WINDOWS_TEST
     /* UFC-48 test launcher (UFC3-WRITE-WINDOWS-TEST.exe; UFC3.exe is the release one, unchanged):
      * write windows and single steps on, with their audit, to measure the coherent windows. */
@@ -969,7 +998,7 @@ static DWORD play_impl(const wchar_t *const *extra, int extra_count) {
     logw(L"UFC 3: window %ls, FSR 1.0 %ls, RCAS %ls (attenuation %ls), readbacks %ls (2 = precise)\n",
          env_or(L"BB_WINDOW_SIZE", L"= output"), env_or(L"BB_FSR1", L"0"), env_or(L"BB_RCAS", L"?"), env_or(L"BB_RCAS_ATTENUATION", L"?"), env_or(L"BB_READBACKS", L"?"));
     if (settings.clear_cache || !wcscmp(env_or(L"BB_CLEAR_SHADER_CACHE", L"0"), L"1")) {
-        wchar_t cache[PATHW]; join(cache, PATHW, env_or(L"BB_USER_DIR", user_dir), L"cache\\CUSA06534");
+        wchar_t cache[PATHW]; join(cache, PATHW, env_or(L"BB_USER_DIR", user_dir), L"cache"); join(cache, PATHW, cache, title_id);
         if (exists(cache)) {
             wchar_t command[PATHW + 64]; _snwprintf(command, PATHW + 64, L"cmd.exe /c rd /s /q \"%ls\"", cache); command[PATHW + 63] = 0;
             run(command, NULL, 0, 0, INFINITE);

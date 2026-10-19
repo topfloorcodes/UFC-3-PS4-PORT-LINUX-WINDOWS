@@ -17,6 +17,17 @@ the native Bloodborne port. All code is GPL-2.0-or-later.
 
 ---
 
+## UFC 2 (branch `ufc2`, bring-up)
+
+This branch adds an **EA SPORTS UFC 2** profile on top of the UFC 3 port: the game check
+recognises a UFC 2 dump (any region), `run.sh` and the Windows launcher take its title ID and
+version from it, and the hooks keyed on UFC 3's executable stay off. It has not been run on a UFC 2
+dump yet; expect missing PS4 imports to implement before it boots. Start with
+`./packaging/linux/ufc2.sh --info /path/to/your/UFC2` and read
+**[docs/ufc2/BRINGUP.md](docs/ufc2/BRINGUP.md)**.
+
+---
+
 ## Status
 
 **Current release: [0.1.5](../../releases)** ([notes](docs/ufc3/releases/0.1.5.md)). What's new:
