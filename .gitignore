@@ -42,3 +42,6 @@ gpu/shim/bbport_gnm_table.inc
 /build.log
 /patches/shaders/
 /docs/ufc3/ufc3-changes.diff
+
+# Downloads made for sharing (source zip, patch, UFC 2 test kit)
+/dist-out/
