@@ -50,7 +50,7 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 # read-only link tree of the merged CTR dump (update 1.21 over the base game).
 game=${BB_GAME_DIR:-}
 if [[ -z $game ]]; then
-    for candidate in orig/CUSA01968 orig/ufc2 orig/CUSA06534 orig/CUSA*; do
+    for candidate in orig/CUSA10038 orig/CUSA01968 orig/ufc2 orig/CUSA06534 orig/CUSA*; do
         [[ -f $candidate/eboot.bin ]] && { game=$candidate; break; }
     done
     game=${game:-orig/CUSA06534}
@@ -69,8 +69,8 @@ read -r -a link_mods <<< "$("$PYTHON" scripts/game_check.py "$game" --field modu
 present_mods=(); for m in "${link_mods[@]}"; do [[ -f $game/sce_module/$m ]] && present_mods+=("$m"); done
 export BB_TITLE_ID=$title_id
 echo "Game profile: $BB_GAME_PROFILE ($title_id $app_ver, build variant $BB_GAME_VARIANT)"
-if [[ $BB_GAME_PROFILE == ufc2 && $app_ver == 01.00 ]]; then
-    echo "UFC 2: this is the base game (01.00); merge the last update ($title_id-patch) in if you have it." >&2
+if [[ $BB_GAME_PROFILE != ufc3 && $app_ver == 01.00 ]]; then
+    echo "$BB_GAME_PROFILE: this is the base game (01.00); merge the last update ($title_id-patch) in if you have it." >&2
 fi
 # ufc3: the fight scene renders black without precise readbacks of linear images (the same as
 # shadPS4 issue #4375 for UFC 4, same engine); both are defaults for this game.
@@ -115,7 +115,8 @@ fi
 # writes (tuned against UFC 3's memcpy sites), movie skipping and online play (UFC 2 talks to a
 # different Blaze server version; UFC 3's private server does not speak it). Each is one
 # environment variable away for testing, e.g. BB_WRITE_WINDOW=1.
-if [[ $BB_GAME_PROFILE == ufc2 ]]; then
+# madden19 (Frostbite) starts from the same conservative defaults until a run says otherwise.
+if [[ $BB_GAME_PROFILE == ufc2 || $BB_GAME_PROFILE == madden19 ]]; then
     export BB_READBACKS=${BB_READBACKS:-2} BB_READBACK_LINEAR=${BB_READBACK_LINEAR:-1}
     export BB_GPU_WRITE_TWINS=${BB_GPU_WRITE_TWINS:-0}
     export BB_WRITE_WINDOW=${BB_WRITE_WINDOW:-0} BB_PREUPLOAD=${BB_PREUPLOAD:-1} BB_WRITE_STEP=${BB_WRITE_STEP:-0}
@@ -123,14 +124,14 @@ if [[ $BB_GAME_PROFILE == ufc2 ]]; then
     export BB_FLIP_RATE=${BB_FLIP_RATE:-0} BB_VBLANK_HZ=${BB_VBLANK_HZ:-480} BB_FPS_LIMIT=${BB_FPS_LIMIT:-60}
     export BB_Z16S8_AS_D16=${BB_Z16S8_AS_D16:-1}
     if [[ -n ${BB_ONLINE_SERVER:-} ]]; then
-        echo "UFC 2: online play is not ported (BB_ONLINE_SERVER ignored); playing offline." >&2
+        echo "$BB_GAME_PROFILE: online play is not ported (BB_ONLINE_SERVER ignored); playing offline." >&2
         unset BB_ONLINE_SERVER
     fi
-    # UFC 2 shader patches, once there are any: patches/shaders-ufc2/<hash>.comp.
-    export BB_SHADER_PATCH_DIR=patch-ufc2
-    patch_out="${BB_USER_DIR:-$data/user}/shader/patch-ufc2"
+    # Per-game shader patches, once there are any: patches/shaders-<profile>/<hash>.comp.
+    export BB_SHADER_PATCH_DIR=patch-$BB_GAME_PROFILE
+    patch_out="${BB_USER_DIR:-$data/user}/shader/patch-$BB_GAME_PROFILE"
     mkdir -p "$patch_out"
-    for src in patches/shaders-ufc2/*.comp; do
+    for src in patches/shaders-$BB_GAME_PROFILE/*.comp; do
         [[ -e $src ]] || continue
         spv="$patch_out/$(basename "${src%.comp}").spv"
         if [[ ! -f $spv || $src -nt $spv ]]; then
@@ -138,7 +139,7 @@ if [[ $BB_GAME_PROFILE == ufc2 ]]; then
                 || { echo "Shader patch failed: $src" >&2; exit 1; }
         fi
     done
-    echo "UFC 2 (bring-up): readbacks ${BB_READBACKS}, write windows ${BB_WRITE_WINDOW}, frame limit ${BB_FPS_LIMIT}"
+    echo "$BB_GAME_PROFILE (bring-up): readbacks ${BB_READBACKS}, write windows ${BB_WRITE_WINDOW}, frame limit ${BB_FPS_LIMIT}"
 fi
 original_game=$game
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \

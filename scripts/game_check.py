@@ -60,6 +60,28 @@ def ufc2_builds():
         return {}
 
 
+# Madden NFL 19 (2018, Frostbite engine). Bring-up profile, like UFC 2: recognised from param.sfo,
+# variant 'madden19' (UFC 3's address-keyed hooks off). shadPS4 compatibility issue #1908: crash
+# shortly after launch; one version reached the menus with sound and a black screen.
+MADDEN19 = dict(name='madden19', game='Madden NFL 19', modules=('libc.prx', 'libSceFios2.prx'), patches=False)
+MADDEN19_TITLES = {'CUSA10038'}
+MADDEN19_TITLE_RE = re.compile(r'\bMadden\W+NFL\W+19\b', re.IGNORECASE)
+
+
+def is_madden19(info):
+    return info.get('TITLE_ID') in MADDEN19_TITLES or bool(MADDEN19_TITLE_RE.search(str(info.get('TITLE', ''))))
+
+
+def bringup_profile(info, image_hash):
+    """The profile of a game in bring-up (no verified image hash yet), or None."""
+    if is_ufc2(info):
+        return ufc2_profile(info, image_hash)
+    if is_madden19(info):
+        return dict(MADDEN19, title=info.get('TITLE_ID', '?'), version=info.get('APP_VER', '?'),
+                    update=f"{info.get('TITLE_ID', 'CUSAxxxxx')}-patch", variant='madden19', known=False)
+    return None
+
+
 def is_ufc2(info):
     title = str(info.get('TITLE', ''))
     return info.get('TITLE_ID') in UFC2_TITLES or bool(UFC2_TITLE_RE.search(title))
@@ -102,8 +124,8 @@ def profile(game, image_hash=None):
         return dict(SUPPORTED[image_hash], variant='5.05')
     info = sfo_info(game)
     skip = os.environ.get('BB_SKIP_GAME_CHECK') == '1'
-    if is_ufc2(info) and (image_hash or skip):
-        return ufc2_profile(info, image_hash)
+    if (image_hash or skip) and (found := bringup_profile(info, image_hash)):
+        return found
     if image_hash and not skip and problem(game, image_hash) is None:
         return dict(BY_TITLE[info['TITLE_ID']], variant='6.72+', known=image_hash in KNOWN_672)
     if not skip:
@@ -133,8 +155,8 @@ def problem(game, image_hash=None):
         return 'unreadable', title, version
     if image_hash in SUPPORTED:
         return None
-    if is_ufc2(info):
-        # UFC 2: any build runs in bring-up (run.sh warns when it is the base game, 01.00).
+    if is_ufc2(info) or is_madden19(info):
+        # Bring-up games (UFC 2, Madden 19): any build runs (run.sh warns about a base game, 01.00).
         return None
     if title not in BY_TITLE:
         return 'other_title', title, version
@@ -150,7 +172,7 @@ def explain(kind, title, version):
     found = f'Found {title} version {version} (sce_sys/param.sfo).'
     p = BY_TITLE.get(title, BY_TITLE[SUPPORTED_TITLE])
     supported = ', '.join(f"{q['game']} {q['title']} {q['version']}" for q in SUPPORTED.values())
-    supported += ', EA SPORTS UFC 2 (any region, bring-up profile)'
+    supported += ', EA SPORTS UFC 2 (any region, bring-up profile), Madden NFL 19 CUSA10038 (bring-up profile)'
     return {
         'missing_update': f"{found} The port needs the {p['version']} update merged into the game folder: copy "
                           f"everything from the dumped {p['version']} update (e.g. {p['update']}) into the "

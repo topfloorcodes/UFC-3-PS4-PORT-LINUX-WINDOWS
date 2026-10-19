@@ -106,6 +106,15 @@ class GameCheckTests(unittest.TestCase):
         game = self.game('CUSA01968', '01.00', name='ＵＦＣ')
         self.assertEqual(game_check.profile(game)['name'], 'ufc2')
 
+    def test_madden19_profile(self):
+        game = self.game('CUSA10038', '01.23', name='Madden NFL 19')
+        self.assertIsNone(game_check.problem(game))
+        p = game_check.profile(game)
+        self.assertEqual((p['name'], p['variant'], p['title'], p['version']), ('madden19', 'madden19', 'CUSA10038', '01.23'))
+        # By ID with any name, and not mistaken for UFC 2 or another Madden.
+        self.assertEqual(game_check.profile(self.game('CUSA10038', '01.00', name='x'))['name'], 'madden19')
+        self.assertEqual(game_check.problem(self.game('CUSA09999', '01.00', name='Madden NFL 18'))[0], 'other_title')
+
     def test_ufc3_is_not_taken_for_ufc2(self):
         self.assertFalse(game_check.is_ufc2({'TITLE': 'EA SPORTS™ UFC® 3', 'TITLE_ID': 'CUSA06534'}))
         self.assertFalse(game_check.is_ufc2({'TITLE': 'EA SPORTS UFC 4'}))
