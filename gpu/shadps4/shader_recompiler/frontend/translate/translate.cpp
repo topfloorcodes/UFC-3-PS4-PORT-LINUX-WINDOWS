@@ -990,6 +990,22 @@ void Translator::SetDst(const InstOperand& operand, const IR::U32F32& value) {
         return ir.SetVccHi(result);
     case OperandField::M0:
         return ir.SetM0(result);
+    case OperandField::ExecLo:
+    case OperandField::ExecHi: {
+        // madden19: a 32-bit write to one half of EXEC (Frostbite shaders, e.g. s_mov_b32
+        // exec_lo). The other half keeps its lanes: the new mask is rebuilt from the current
+        // ballot and the written word, as the 64-bit path (SetDst64) sets EXEC from a mask.
+        const IR::U32 word = result.Type() == IR::Type::F32 ? ir.BitCast<IR::U32>(IR::F32{result})
+                                                            : IR::U32{result};
+        const IR::Value current = ir.UnpackUint2x32(ir.Ballot(ir.GetExec()));
+        const IR::U32 lo = operand.field == OperandField::ExecLo
+                               ? word
+                               : IR::U32{ir.CompositeExtract(current, 0)};
+        const IR::U32 hi = operand.field == OperandField::ExecHi
+                               ? word
+                               : IR::U32{ir.CompositeExtract(current, 1)};
+        return ir.SetExec(ir.InverseBallot(ir.PackUint2x32(ir.CompositeConstruct(lo, hi))));
+    }
     default:
         UNREACHABLE_MSG("Unknown field {}", u32(operand.field));
     }

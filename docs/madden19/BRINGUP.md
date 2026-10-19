@@ -37,3 +37,7 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
    128 KiB of GPU memory (type 3, prot 0x33) at fixed 0x7f0000000, below the PS4 user range (the
    console's system-managed area). Windows only reserved 0x1000000000+; build 8 reserves the free
    1 GiB window around such a request on demand (platform_win.c extend_reservation).
+7. Build 8: the 0x7f0000000 window reserved; audio port opened, splash screen hidden, ~200 GPU
+   submissions. Stopped in the shader recompiler: translate.cpp SetDst "Unknown field 126"
+   (EXEC_LO as a 32-bit destination). Build 9 handles 32-bit writes to EXEC_LO / EXEC_HI (the
+   other half keeps its lanes).
