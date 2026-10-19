@@ -28,3 +28,7 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
    `sceKernelBatchMap` x2 (Frostbite's allocator); the first-use list ends with PlayGo
    (GetLocus, language masks, GetProgress, GetToDoList). Build 6 logs the first virtual queries
    and batch maps and every failed batch map.
+5. Build 6 log: the failing call was `sceKernelBatchMap` op 2 (protect), prot 0, 2 MiB at
+   0x1040a00000 -> EINVAL: protection changes required fully mapped memory. Frostbite makes guard
+   regions no-access over reserved / unmapped space; build 7 accepts prot 0 there (mapped pieces
+   protected as before; granting access to unbacked memory still fails). tests/test_memory_guard.c.

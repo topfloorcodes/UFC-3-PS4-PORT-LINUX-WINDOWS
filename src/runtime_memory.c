@@ -579,10 +579,35 @@ static ABI int32_t reserve_range(void **inout, uint64_t size, int flags, uint64_
     if (!result) printf("Runtime: reserved virtual range %p, size=%" PRIu64 "\n", *inout, size);
     return result;
 }
+static _Atomic unsigned guard_logged;
 static int32_t protect_locked(uintptr_t start, uint64_t size, int prot, int type) {
     uintptr_t end=start+align_up(size,PAGE);
     start&=~(uintptr_t)(PAGE-1);
-    if ((prot & ~0x37) || !covered(start,end,0)) return INVALID;
+    if (prot & ~0x37) return INVALID;
+    if (!covered(start,end,0)) {
+        /* madden19: Frostbite makes guard regions no-access (BatchMap op 2, prot 0) over address
+         * space that is only reserved or not mapped at all. The console accepts that (nothing there
+         * can be accessed anyway); granting access to unbacked memory still fails. The mapped pieces
+         * inside the range are protected as usual. */
+        if (prot) return INVALID;
+        int error; size_t i=carve(start,end,&error);
+        if (error) return NO_MEMORY;
+        unsigned mapped=0, reserved=0;
+        for (; i<vma_count && vmas[i].start<end; ++i) {
+            if (vmas[i].end<=start) continue;
+            if (vmas[i].kind!=KIND_RESERVED) {
+                if (host_protect(vmas[i].start,vmas[i].end-vmas[i].start,host_prot(0))) return INVALID;
+                ++mapped;
+            } else ++reserved;
+            vmas[i].prot=0; if (type>=0) vmas[i].type=type;
+        }
+        if (atomic_fetch_add(&guard_logged,1)<8)
+            printf("Memory: no-access guard over %p-%p accepted (%u mapped pieces, %u reserved, the rest unmapped)\n",
+                   (void *)start,(void *)end,mapped,reserved);
+        queue_hook(HOOK_INVALIDATE,start,end-start);
+        ++protects;
+        return 0;
+    }
     if (host_protect(start,end-start,host_prot(prot))) return INVALID;
     int error; size_t i=carve(start,end,&error);
     if (error) return NO_MEMORY;
