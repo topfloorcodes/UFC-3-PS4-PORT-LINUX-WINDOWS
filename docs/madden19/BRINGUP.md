@@ -24,3 +24,7 @@ Log of runs: add each run's outcome here (version, how far it got, what was fixe
 3. Build 3: libc startup done, game entry, MainThread + workers, PlayGo; then a NULL write on
    MainThread at guest offset 0x54ac3 (stack through libc). `BB_IMPORT_TRACE=1` (default for this
    profile) now prints the last 64 runtime-answered PS4 calls in the crash report.
+4. Build 5 trace: last runtime calls before the NULL write were `sceKernelVirtualQuery` then
+   `sceKernelBatchMap` x2 (Frostbite's allocator); the first-use list ends with PlayGo
+   (GetLocus, language masks, GetProgress, GetToDoList). Build 6 logs the first virtual queries
+   and batch maps and every failed batch map.

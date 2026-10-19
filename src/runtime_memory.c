@@ -615,11 +615,23 @@ static ABI int32_t query_protection(void *address, void **start, void **end, uin
     read_unlock();
     return 0;
 }
+/* madden19 bring-up: the first virtual queries and batch maps are logged (Frostbite's allocator
+ * runs on them; Madden 19 wrote through NULL right after its first BatchMap calls). */
+static _Atomic unsigned vq_logged, bm_logged, bm_failed;
 static ABI int32_t virtual_query(const void *address, int flags, VirtualQueryInfo *info, uint64_t info_size) {
-    if (!info || info_size!=sizeof(*info)) return INVALID;
+    const int say = atomic_fetch_add(&vq_logged, 1) < 16;
+    if (!info || info_size!=sizeof(*info)) {
+        if (say) printf("Memory: sceKernelVirtualQuery(%p, flags %d, info size %llu) -> EINVAL (expected %zu)\n",
+                        address, flags, (unsigned long long)info_size, sizeof(*info));
+        return INVALID;
+    }
     read_lock();
     size_t i=vma_index((uintptr_t)address);
-    if (i==vma_count || (vmas[i].start>(uintptr_t)address && !(flags & 1))) { read_unlock(); return ACCESS; }
+    if (i==vma_count || (vmas[i].start>(uintptr_t)address && !(flags & 1))) {
+        read_unlock();
+        if (say) printf("Memory: sceKernelVirtualQuery(%p, flags %d) -> EACCES (nothing there)\n", address, flags);
+        return ACCESS;
+    }
     Vma v=vmas[i];
     memset(info,0,sizeof(*info));
     info->start=v.start; info->end=v.end;
@@ -629,6 +641,8 @@ static ABI int32_t virtual_query(const void *address, int flags, VirtualQueryInf
     strcpy(info->name, v.kind==KIND_RESERVED ? "reserved" : v.kind==KIND_DIRECT ? "direct" : "flexible");
     __atomic_add_fetch(&queries,1,__ATOMIC_RELAXED);
     read_unlock();
+    if (say) printf("Memory: sceKernelVirtualQuery(%p, flags %d) -> %s %p-%p prot 0x%x\n", address, flags, info->name,
+                    (void *)info->start, (void *)info->end, (unsigned)info->protection);
     return 0;
 }
 static ABI int32_t direct_memory_type(uint64_t phys, int *type, void **start, void **end) {
@@ -678,6 +692,19 @@ static ABI int32_t batch_map2(BatchEntry *entries, int count, int *processed, in
     write_unlock();
     flush_hooks();
     if (processed) *processed=done;
+    const int say = atomic_fetch_add(&bm_logged, 1) < 24;
+    const int failed = result && atomic_fetch_add(&bm_failed, 1) < 32;
+    if (say || failed) {
+        printf("Memory: sceKernelBatchMap%s(%d entries, flags 0x%x) -> %s0x%08x after %d\n", flags == MAP_FIXED_FLAG ? "" : "2",
+               count, (unsigned)flags, result ? "FAILED " : "", (unsigned)result, done);
+        for (int k = 0; k < count && k < 4; ++k) {
+            const BatchEntry *e = &entries[k];
+            printf("  entry %d: op %d start %p offset 0x%llx length 0x%llx prot 0x%x type %d\n", k, e->operation, e->start,
+                   (unsigned long long)e->offset, (unsigned long long)e->length, (unsigned)(uint8_t)e->prot, e->type);
+        }
+        if (count > 4) printf("  ... %d more entries\n", count - 4);
+        fflush(stdout);
+    }
     return result;
 }
 static ABI int32_t batch_map(BatchEntry *entries, int count, int *processed) {
